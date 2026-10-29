@@ -1,0 +1,35 @@
+{
+ "kb": {
+  "count": 91,
+  "sources": 31,
+  "version": "76af48b9888b"
+ },
+ "self": {
+  "total": 91,
+  "hit": 91,
+  "rate": 100,
+  "fail": []
+ },
+ "paraphrase": {
+  "total": 16,
+  "hit": 16,
+  "rate": 100,
+  "fail": []
+ },
+ "outOfScope": {
+  "total": 16,
+  "refused": 13,
+  "soft": 2,
+  "fail": 1,
+  "failList": [
+   {
+    "q": "红色旅游的定义",
+    "got": "D04",
+    "score": 0.361,
+    "text": "据官方发布，2019年全国红色旅游接待人次达14.1亿。此后"
+   }
+  ]
+ },
+ "latencyMs": 0.06,
+ "threshold": 0.33
+}
