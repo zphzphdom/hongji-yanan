@@ -610,9 +610,21 @@
     });
   }
 
+  // 静态托管（GitHub Pages）时没有 /api：提示用 Render 地址，而不是把用户卡在登录页
+  function staticFallback() {
+    var box = document.querySelector('.login-form');
+    if (!box || box.querySelector('.static-note')) return;
+    var n = document.createElement('div');
+    n.className = 'static-note';
+    n.innerHTML = '当前是静态页面（无后端）。语音/账号/联网生成请访问 ' +
+      '<a href="https://hongji-yanan.onrender.com" target="_blank" rel="noopener">hongji-yanan.onrender.com</a>。';
+    box.appendChild(n);
+  }
+
   function initAuth() {
     bindAuth();
     if (!token) { showLogin(); return; }
+    if (location.hostname.endsWith('github.io')) { staticFallback(); showLogin(); return; }
     api('/api/capabilities').then(function () {
       // 用一次需要登录的接口验证 token
       return api('/api/console/dashboard');
@@ -622,7 +634,7 @@
       } else {
         showLogin();
       }
-    }).catch(function () { showLogin(); });
+    }).catch(function () { staticFallback(); showLogin(); });
   }
 
   function bindAuth() {

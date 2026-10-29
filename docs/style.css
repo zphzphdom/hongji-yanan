@@ -184,3 +184,5 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .empty,.muted{color:#A6978E;font-size:13px;padding:6px 2px}
 .web-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .web-tag{font-size:11px;color:#4A3A34;background:#F3F6F1;border:1px solid #DCE6D8;border-radius:5px;padding:3px 8px}
+.static-note{margin-top:12px;font-size:12px;color:#8C1F28;background:#F7EDE6;border:1px solid #EAD7C8;border-radius:8px;padding:10px 12px;line-height:1.7}
+.static-note a{color:#B0863A;word-break:break-all}
