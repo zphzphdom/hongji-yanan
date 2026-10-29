@@ -1,12 +1,12 @@
 {
  "kb": {
-  "count": 91,
-  "sources": 31,
-  "version": "76af48b9888b"
+  "count": 151,
+  "sources": 47,
+  "version": "56bef90de55b"
  },
  "self": {
-  "hit": 91,
-  "total": 91,
+  "hit": 151,
+  "total": 151,
   "fail": []
  },
  "paraphrase": {
@@ -15,10 +15,14 @@
   "fail": []
  },
  "oos": {
-  "refused": 13,
+  "refused": 11,
   "soft": 2,
-  "fail": 1,
+  "fail": 2,
   "failList": [
+   {
+    "q": "延安房价多少",
+    "got": "Q32"
+   },
    {
     "q": "红色旅游的定义",
     "got": "D04"
@@ -26,6 +30,10 @@
   ]
  },
  "knownLimitation": [
+  {
+   "q": "延安房价多少",
+   "got": "Q32"
+  },
   {
    "q": "红色旅游的定义",
    "got": "D04"
