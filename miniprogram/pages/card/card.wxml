@@ -1,0 +1,9 @@
+<view class="page">
+  <canvas type="2d" id="card" class="card-canvas"></canvas>
+  <view class="tip">保存后可发朋友圈；也可以直接点右上角转发给朋友。</view>
+  <view class="btns">
+    <view class="btn" bindtap="save">{{saving ? '保存中…' : '保存到相册'}}</view>
+    <button class="btn ghost" open-type="share">转发给朋友</button>
+  </view>
+  <view class="hint">回答与来源均来自知识库，未经改写的事实可直接核查。</view>
+</view>

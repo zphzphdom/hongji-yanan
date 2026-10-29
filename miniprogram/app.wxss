@@ -1,0 +1,29 @@
+page {
+  --red: #8C1F28;
+  --gold: #B0863A;
+  --cream: #FAF5EF;
+  --ink: #211A17;
+  --grey: #6E625C;
+  --line: #E7DCD3;
+  background: var(--cream);
+  color: var(--ink);
+  font-size: 30rpx;
+  line-height: 1.65;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+.red {
+  color: var(--red);
+}
+
+.muted {
+  color: var(--grey);
+  font-size: 22rpx;
+}

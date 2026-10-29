@@ -1,0 +1,58 @@
+.page {
+  min-height: 100vh;
+  background: #FAF5EF;
+  padding: 24rpx 32rpx calc(40rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.card-canvas {
+  width: 686rpx;
+  height: 914rpx;
+  border-radius: 12rpx;
+  box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.16);
+  background: #fff;
+  display: block;
+  margin: 0 auto;
+}
+
+.tip {
+  margin-top: 20rpx;
+  font-size: 22rpx;
+  color: #A6978E;
+  text-align: center;
+}
+
+.btns {
+  margin-top: 28rpx;
+  display: flex;
+}
+
+.btn {
+  flex: 1;
+  text-align: center;
+  background: #8C1F28;
+  color: #fff;
+  font-size: 30rpx;
+  padding: 22rpx 0;
+  border-radius: 14rpx;
+  margin-right: 16rpx;
+  line-height: 1.2;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: #6E625C;
+  border: 2rpx solid #E7DCD3;
+  margin-right: 0;
+}
+
+.btn.ghost::after {
+  border: none;
+}
+
+.hint {
+  margin-top: 24rpx;
+  font-size: 22rpx;
+  color: #A6978E;
+  text-align: center;
+}

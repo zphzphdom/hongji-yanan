@@ -137,18 +137,22 @@ def main():
     tree, blobs = [], 0
     for rel, full in files:
         ext = os.path.splitext(rel)[1].lower()
-        if ext in BINARY_EXT:
-            with open(full, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode()
+        raw = open(full, "rb").read()
+        text = None
+        if ext not in BINARY_EXT:
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                text = None
+        if text is None:
             s, b = call("POST", "/repos/%s/%s/git/blobs" % (owner, repo),
-                        {"content": b64, "encoding": "base64"})
+                        {"content": base64.b64encode(raw).decode(), "encoding": "base64"})
             if s != 201:
                 sys.exit("blob 失败 %s：%s %s" % (rel, s, b))
             tree.append({"path": rel, "mode": "100644", "type": "blob", "sha": b["sha"]})
             blobs += 1
         else:
-            with open(full, encoding="utf-8") as f:
-                tree.append({"path": rel, "mode": "100644", "type": "blob", "content": f.read()})
+            tree.append({"path": rel, "mode": "100644", "type": "blob", "content": text})
 
     s, t = call("POST", "/repos/%s/%s/git/trees" % (owner, repo), {"tree": tree})
     if s != 201:

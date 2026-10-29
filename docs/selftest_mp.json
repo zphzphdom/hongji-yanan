@@ -1,0 +1,53 @@
+{
+ "kb": {
+  "count": 91,
+  "sources": 31,
+  "version": "76af48b9888b"
+ },
+ "self": {
+  "hit": 91,
+  "total": 91,
+  "fail": []
+ },
+ "paraphrase": {
+  "hit": 16,
+  "total": 16,
+  "fail": []
+ },
+ "oos": {
+  "refused": 13,
+  "soft": 2,
+  "fail": 1,
+  "failList": [
+   {
+    "q": "红色旅游的定义",
+    "got": "D04"
+   }
+  ]
+ },
+ "knownLimitation": [
+  {
+   "q": "红色旅游的定义",
+   "got": "D04"
+  }
+ ],
+ "unknownMiss": [],
+ "modes": [
+  {
+   "mode": "fact",
+   "len": 131,
+   "ok": true
+  },
+  {
+   "mode": "research",
+   "len": 141,
+   "ok": true
+  },
+  {
+   "mode": "moment",
+   "len": 66,
+   "ok": true
+  }
+ ],
+ "pass": true
+}
