@@ -140,11 +140,6 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
   padding:13px;font-size:15px;cursor:pointer;font-family:var(--sans)}
 .btn-primary:disabled{opacity:.6}
 .err{color:#B3261E;font-size:12.5px;min-height:16px}
-.login-accounts{margin-top:14px;display:flex;flex-direction:column;gap:6px}
-.acct{font-size:12px;color:var(--grey);border:1px dashed var(--line);border-radius:8px;
-  padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
-.acct:hover{border-color:var(--gold)}
-.acct b{color:var(--red)}
 .login-hint{margin-top:12px;font-size:11px;color:#A6978E;line-height:1.7}
 @media (max-width:720px){.login-card{grid-template-columns:1fr}.login-hero{padding:26px 22px}}
 

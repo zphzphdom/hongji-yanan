@@ -640,12 +640,7 @@
   function bindAuth() {
     $('#loginBtn').onclick = doLogin;
     $('#password').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
-    [].forEach.call(document.querySelectorAll('.acct'), function (a) {
-      a.onclick = function () {
-        $('#username').value = a.dataset.u;
-        $('#password').value = a.dataset.p;
-      };
-    });
+    $('#username').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
     $('#logoutBtn').onclick = function () {
       api('/api/logout', {}).catch(function () {});
       showLogin();
