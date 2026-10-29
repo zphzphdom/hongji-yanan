@@ -8,8 +8,8 @@ NO_ANSWER = ("这个问题我需要查证，建议咨询延安市文化和旅游
 
 SPEC = [
     # ---- A 旧址与场馆（26）
-    dict(id="A01", q="宝塔山为什么是延安的象征？", ref="spot_baotashan", kind="fact", scene="参观中"),
-    dict(id="A02", q="宝塔山上的宝塔是什么年代的？", ref="spot_baotashan", kind="fact", scene="参观中"),
+    dict(id="A01", q="宝塔山为什么是延安的象征？", ref="spot_baotashan", kind="fact", scene="参观中", image="宝塔山·仰拍"),
+    dict(id="A02", q="宝塔山上的宝塔是什么年代的？", ref="spot_baotashan", kind="fact", scene="参观中", image="宝塔山", tags2=["宝塔山", "塔", "砖塔"]),
     dict(id="A03", q="杨家岭革命旧址有什么可看的？", ref="spot_yangjialing", kind="fact", scene="参观中"),
     dict(id="A04", q="党的七大是什么时候、在哪里开幕的？", ref="spot_yangjialing", kind="fact", scene="研学"),
     dict(id="A05", q="延安文艺座谈会是哪一年开的？", ref="spot_yangjialing", kind="fact", scene="研学"),

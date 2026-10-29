@@ -115,14 +115,27 @@
       if (qNorm.indexOf(idx.tagList[i]) >= 0) ent.push(idx.tagList[i]);
     }
     if (ent.length) {
+      // 多个实体同时出现时（"延安苹果和洛川苹果的区别"），看它覆盖了问句的多少；
+      // 覆盖不足一半的实体（如大词"延安"）只是背景词，不参与路由。
+      var bestList = null, bestRatio = 0, bestTag = '', bestScore = 0;
       for (i = 0; i < ent.length; i++) {
+        var ratio = ent[i].length / qNorm.length;
         local = groupRank(idx, idx.tagMap, ent[i], qG, qNorm);
-        if (local.length && local[0].score >= 0.20) {
-          local.forEach(function (s) { s.viaTag = true; s.tags = [ent[i]]; });
-          return local.slice(0, topk || 5);
+        if (!local.length) continue;
+        var better = ratio > bestRatio + 1e-6 ||
+          (Math.abs(ratio - bestRatio) <= 1e-6 && local[0].score > bestScore);
+        if (better) {
+          bestRatio = ratio;
+          bestScore = local[0].score;
+          bestList = local;
+          bestTag = ent[i];
         }
       }
-      // 实体提到了，但在我们库里说不清 —— 回全库按阈值判，不降级去猜意图
+      if (bestList && bestRatio >= 0.5 && bestScore >= 0.20) {
+        bestList.forEach(function (s) { s.viaTag = true; s.tags = [bestTag]; });
+        return bestList.slice(0, topk || 5);
+      }
+      // 实体只是背景词、或库里说不清 —— 回全库按阈值判，不降级去猜意图
       return rank(idx, idx.entries, qG, qNorm).slice(0, topk || 5);
     }
 
@@ -217,6 +230,7 @@
       raw: entry.a,
       mode: mode || 'fact',
       sources: entry.sources || [],
+      image: entry.image || null,
       kind: entry.kind,
       scene: entry.scene,
       conf: entry.conf,

@@ -117,6 +117,8 @@
       b.appendChild(row);
     }
 
+    if (r.image) b.appendChild(imageBlock(r.image));
+
     if (!r.refused) {
       var acts = el('div', 'acts');
       var b1 = el('button', 'act', '生成问答卡');
@@ -200,6 +202,34 @@
       (s.url ? '<div class="d"><a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.url) + '</a></div>' : '');
     box.appendChild(d);
     $('#srcMask').classList.remove('hidden');
+  }
+
+  /* ---------------- 配图 ---------------- */
+  function imageBlock(key) {
+    var meta = (window.RED_IMAGES || {})[key];
+    var wrap = el('div', 'img-wrap');
+    if (!meta) return wrap;
+    var img = document.createElement('img');
+    img.className = 'kb-img';
+    img.src = meta.file;
+    img.alt = meta.alt || key;
+    img.loading = 'lazy';
+    img.onclick = function () { openLightbox(meta); };
+    wrap.appendChild(img);
+    if (meta.credit) wrap.appendChild(el('div', 'img-credit', meta.credit));
+    return wrap;
+  }
+
+  function openLightbox(meta) {
+    var box = $('#lightbox');
+    if (!box) return;
+    box.innerHTML = '';
+    var img = document.createElement('img');
+    img.src = meta.file;
+    img.alt = meta.alt || '';
+    box.appendChild(img);
+    box.appendChild(el('div', 'lb-credit', meta.credit || ''));
+    box.classList.remove('hidden');
   }
 
   function esc(s) {

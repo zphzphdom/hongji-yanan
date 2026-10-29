@@ -44,31 +44,40 @@ def service_source(spot_id):
 def resolve(row):
     """返回 (标准回答, 来源对象列表)。"""
     ref = row["ref"]
-    if row["kind"] == "service":
+    kind = row.get("kind", "fact")
+    if kind == "service":
         sid = ref[1]
         src = service_source(sid)
         kb_id = SPOTS[sid].get("kb_id")
         if kb_id and kb_id in KB:
             src = KB[kb_id]["source"]
         return service_answer(sid), [src]
-    if row["kind"] == "combo":
+    if kind == "combo":
         texts = []
         srcs = []
         for k in ref:
             texts.append(KB[k]["text"])
             srcs.append(KB[k]["source"])
         return "".join(texts), srcs
-    if row["kind"] == "multi":
+    if kind == "multi":
         texts = [KB[k]["text"] for k in ref]
         srcs = [KB[k]["source"] for k in ref]
         return "".join(texts), srcs
+    if isinstance(ref, dict):
+        s = ref
+        extra = row.get("ans") or ""
+        body = ("来自%s《%s》（%s）的公开页面，链接可打开核对原文；具体细节以页面内容为准，我不做转述推测。"
+                % (s["name"], s["doc"], s["date"]))
+        return (extra + "\n" if extra else "") + body, [s]
     return KB[ref]["text"], [KB[ref]["source"]]
 
 
 def all_spec():
     from kb_spec import SPEC
     from kb_extra import extra_spec
-    return SPEC + extra_spec()
+    from kb_products import extra_spec as products_spec
+    from kb_phrasings import spec_list
+    return SPEC + extra_spec() + products_spec() + spec_list()
 
 
 def build_rows():
@@ -104,7 +113,9 @@ def build_rows():
             "url": first["url"],
             "conf": r.get("conf", "高"),
             "scene": r.get("scene", "参观中"),
-            "kind": {"fact": "史实", "boundary": "拒答样板", "service": "服务信息", "combo": "史实"}.get(r["kind"], "史实"),
+            "kind": {"fact": "史实", "boundary": "拒答样板", "service": "服务信息", "combo": "史实",
+                     "page": "待补细节"}.get(r.get("kind", "fact"), "史实"),
+            "image": r.get("image"),
         })
     return rows, registry
 

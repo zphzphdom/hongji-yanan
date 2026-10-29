@@ -21,6 +21,8 @@ def main(pages_url):
         src = os.path.join(WEB, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(DOCS, name))
+    import sync_images
+    sync_images.main()
     make(pages_url)  # 固定网址的二维码：docs/qr.png + 仓库根 二维码.png
     print("站点已输出到 docs/，二维码指向 %s" % pages_url)
 

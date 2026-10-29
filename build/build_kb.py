@@ -40,13 +40,35 @@ SPOT_TAGS = {
 }
 
 
+INTENT_WORDS = set([
+    "价格", "一斤", "商品价格",
+    "门票", "多少钱", "免费", "要钱吗", "价格", "一斤", "商品价格", "预约", "实名", "怎么约", "约不上", "开门", "闭馆", "开放",
+    "人多", "客流", "排队", "今天", "天气", "下雨", "气温", "冷不冷", "热不热", "订票", "代订",
+    "买票", "预约代办", "馆长", "电话", "讲解员", "联系方式", "带货", "直播", "文案", "广告",
+])
+PLACE_WORDS = set(["延安", "子长", "宜川", "洛川", "志丹", "延川", "黄龙", "甘泉", "吴起", "黄陵",
+                   "安塞", "宝塔", "杨家岭", "枣园", "王家坪", "凤凰山", "鲁艺", "清凉山", "南泥湾",
+                   "壶口", "乾坤湾", "黄帝陵", "瓦窑堡", "刘志丹", "西北局", "纪念馆", "中央大礼堂",
+                   "大生产纪念馆", "新闻纪念馆", "旧居", "旧址"])
+
+
+def _itags(raw):
+    out = []
+    for t in raw:
+        if t in PLACE_WORDS:
+            continue
+        if t in INTENT_WORDS:
+            out.append(t)
+    return out
+
+
 def main():
     specs = all_spec()
     rows, _ = build_rows()
     entries = []
     for row, spec in zip(rows, specs):
         tags = []
-        itags = list(spec.get("tags2") or []) + SYNONYMS.get(row["id"], [])
+        itags = SYNONYMS.get(row["id"], [])
         ref = spec.get("ref")
         keys = [ref] if isinstance(ref, str) else (list(ref) if isinstance(ref, list) else [])
         if isinstance(ref, tuple) and ref[0] == "service":
@@ -62,9 +84,14 @@ def main():
             "kind": row["kind"],
             "scene": row["scene"],
             "conf": row["conf"],
-            "tags": sorted(set(tags)),
-            "itags": sorted(set(t for t in itags if t)),
+            "tags": sorted(set(tags) | set(spec.get("tags2") or [])),
+            "itags": sorted(set(_itags(itags))),
+            "image": row.get("image"),
         })
+    # G13 兼作"商品价格类问题"的落点：延安农品没有公开单价，由它统一说明口径
+    for e in entries:
+        if e["id"] == "n13_price":
+            e["itags"] = sorted(set(e["itags"]) | {"价格", "一斤", "商品价格"})
     payload = {
         "ip": "红迹·延安",
         "agent": "延小讲",
