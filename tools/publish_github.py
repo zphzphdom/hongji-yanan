@@ -166,14 +166,12 @@ def main():
     print("已推送 commit：", c["sha"][:10])
 
     s, pg = call("GET", "/repos/%s/%s/pages" % (owner, repo))
-    if s == 404:
+    if s == 200:
+        print("Pages 已启用：", pg.get("html_url"), "|", pg.get("status"))
+    else:
         s, pg = call("POST", "/repos/%s/%s/pages" % (owner, repo),
                      {"source": {"branch": "main", "path": pages_path}})
         print("开启 Pages：", s, pg.get("html_url") or pg)
-    else:
-        s2, pg2 = call("PUT", "/repos/%s/%s/pages" % (owner, repo),
-                       {"source": {"branch": "main", "path": pages_path}})
-        print("Pages 已存在，更新源：", s2)
 
     for _ in range(12):
         s, pg = call("GET", "/repos/%s/%s/pages" % (owner, repo))
