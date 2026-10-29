@@ -129,7 +129,8 @@
       b.appendChild(wr);
     }
 
-    if (r.image) b.appendChild(imageBlock(r.image));
+    // 核查结论（知识库只做辨真伪，不直接作答）
+    if (r.verdict) b.appendChild(verdictBlock(r.verdict));
 
     if (!r.refused) {
       var acts = el('div', 'acts');
@@ -247,6 +248,58 @@
     return String(s || '').replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
+  }
+
+  /* ---------------- 核查结论：知识库只辨真伪 ---------------- */
+  var VERDICT = {
+    support: { label: '知识库支持', cls: 'ok', hint: '与库内权威记载一致' },
+    conflict: { label: '与知识库冲突', cls: 'bad', hint: '以库内来源为准' },
+    unknown: { label: '知识库无记载', cls: 'warn', hint: '已联网生成，未见库内佐证' }
+  };
+
+  function verdictBlock(v) {
+    var meta = VERDICT[v.level] || VERDICT.unknown;
+    var box = el('div', 'verdict ' + meta.cls);
+    var head = el('div', 'verdict-head');
+    head.appendChild(el('span', 'verdict-tag', meta.label));
+    head.appendChild(el('span', 'verdict-hint', meta.hint));
+    box.appendChild(head);
+
+    if (v.matched && v.matched.length) {
+      var list = el('div', 'verdict-list');
+      v.matched.forEach(function (m) {
+        var it = el('div', 'verdict-item');
+        it.appendChild(el('span', 'verdict-q', m.q));
+        if (m.cited) it.appendChild(el('span', 'verdict-flag', '已引用'));
+        it.onclick = function () { openEntry(m); };
+        list.appendChild(it);
+      });
+      box.appendChild(list);
+    }
+    if (v.conflicts && v.conflicts.length) {
+      var cl = el('div', 'verdict-list');
+      v.conflicts.forEach(function (c) {
+        var it = el('div', 'verdict-item conflict');
+        it.appendChild(el('span', 'verdict-q', '库内：' + (c.entry || c)));
+        cl.appendChild(it);
+      });
+      box.appendChild(cl);
+    }
+    if (v.note) box.appendChild(el('div', 'verdict-note', v.note));
+    return box;
+  }
+
+  function openEntry(m) {
+    $('#srcTitle').textContent = '知识库条目';
+    var box = $('#srcBody');
+    box.innerHTML = '';
+    var d = el('div', 'src-item');
+    d.innerHTML = '<div class="k">问题</div><div class="t">' + esc(m.q) + '</div>' +
+      '<div class="k" style="margin-top:8px">知识库记载</div><div class="t">' + esc(m.a || '') + '</div>' +
+      (m.sources && m.sources.length ? '<div class="d">来源：' + esc(m.sources[0].org || '') + '《' +
+        esc(m.sources[0].doc || '') + '》' + esc(m.sources[0].date || '') + '</div>' : '');
+    box.appendChild(d);
+    $('#srcMask').classList.remove('hidden');
   }
 
   /* ---------------- 问答卡 ---------------- */
@@ -466,7 +519,23 @@
   }
 
   /* ================= 登录与后台 ================= */
-  var token = localStorage.getItem('hy_token') || '';
+  // 手机通过局域网 IP 打开时不是安全上下文，localStorage 可能直接抛异常：
+  // 全部走 memory 兜底，保证登录流程不因存储问题中断。
+  var MEM = {};
+  var store = {
+    get: function (k) {
+      try { return window.localStorage.getItem(k); } catch (e) { return MEM[k] || null; }
+    },
+    set: function (k, v) {
+      MEM[k] = v;
+      try { window.localStorage.setItem(k, v); } catch (e) { /* 忽略：已有内存副本 */ }
+    },
+    del: function (k) {
+      delete MEM[k];
+      try { window.localStorage.removeItem(k); } catch (e) { /* 忽略 */ }
+    }
+  };
+  var token = store.get('hy_token') || '';
   var me = null;
 
   function api(path, body, opts) {
@@ -484,7 +553,7 @@
 
   function showLogin(msg) {
     token = '';
-    localStorage.removeItem('hy_token');
+    store.del('hy_token');
     $('#appView').classList.add('hidden');
     $('#consoleView').classList.add('hidden');
     $('#loginView').classList.remove('hidden');
@@ -523,8 +592,8 @@
       $('#loginBtn').textContent = '进入';
       if (j && j.ok) {
         token = j.token;
-        localStorage.setItem('hy_token', token);
-        localStorage.setItem('hy_user', j.user);
+        store.set('hy_token', token);
+        store.set('hy_user', j.user);
         $('#password').value = '';
         showApp(j);
       } else {
@@ -646,7 +715,7 @@
       return api('/api/console/dashboard');
     }).then(function (d) {
       if (d && !d.error) {
-        showApp({ user: localStorage.getItem('hy_user') || 'user', label: '已登录', role: 'demo' });
+        showApp({ user: store.get('hy_user') || 'user', label: '已登录', role: 'demo' });
       } else {
         showLogin();
       }

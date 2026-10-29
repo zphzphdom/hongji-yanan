@@ -255,10 +255,10 @@ def search_kb(q, topk=4):
 
 
 def ds_search(cfg, query, timeout=8):
-    """DeepSeek 联网检索；失败返回空，不阻塞主链路。"""
+    """DeepSeek 联网检索（实时）。失败返回空，不阻塞主链路。"""
     if not cfg["key"] or not cfg["search_on"]:
         return []
-    body = json.dumps({"query": query, "max_results": 4}).encode("utf-8")
+    body = json.dumps({"query": query, "max_results": 6}).encode("utf-8")
     req = urllib.request.Request(cfg["search"], data=body, headers={
         "Authorization": "Bearer " + cfg["key"], "Content-Type": "application/json"}, method="POST")
     try:
@@ -267,13 +267,15 @@ def ds_search(cfg, query, timeout=8):
     except Exception:
         return []
     out = []
-    for it in (data.get("results") or [])[:4]:
+    for it in (data.get("results") or [])[:6]:
         title = (it.get("title") or "").strip()
         content = (it.get("snippet") or it.get("content") or it.get("summary") or "").strip()
         if not content:
             continue
         out.append({"title": title[:80], "site": (it.get("site_name") or "")[:24],
-                    "url": (it.get("url") or "")[:300], "content": content[:400]})
+                    "url": (it.get("url") or "")[:300],
+                    "date": (it.get("published_at") or it.get("date") or "")[:20],
+                    "content": content[:400]})
     return out
 
 
@@ -285,16 +287,15 @@ MODE_RULES = {
 }
 
 SYSTEM = (
-    "你是延安红色文旅的 AI 讲解员「延小讲」。你会拿到三样东西：用户的提问、"
-    "本地知识库的命中条目（权威，带来源）、可选的联网检索结果。\n"
-    "你的任务：把知识库与联网结果整合成指定模式的回答。\n\n"
+    "你是延安红色文旅的 AI 讲解员「延小讲」。你拿到的是**刚刚联网检索到的实时网页内容**，"
+    "请据此回答用户提问，并在字里行间自然体现这是新近信息。\n\n"
     "硬规则：\n"
-    "1. 事实以「知识库」为准；知识库没有时，才可以采用「联网结果」，并且必须与提问直接相关。\n"
-    "2. 所有数字、日期、人名、地名必须与所给材料逐字一致，不换算、不四舍五入、不补充推算。\n"
-    "3. 材料里没有的信息一律不编；拿不准就说明「这一点需要查证」。\n"
+    "1. 事实只能来自这次给出的联网检索结果；检索结果里没有的数字、日期、人名、地名一律不写。\n"
+    "2. 数字、日期、专有名词必须与检索原文逐字一致，不换算、不约整、不补充推算。\n"
+    "3. 检索结果相互矛盾时，选官方来源（政府网站、官媒）；仍无法判断就说明「这一点需要查证」。\n"
     "4. 一句话里最多出现 2 个数字；不要罗列数据清单。\n"
-    "5. 简体中文，不用 Markdown 符号，不写「作为AI」「以上回答」这类话，不加感叹号连用。\n"
-    "6. 只输出正文，不要输出「来源：」行（来源由系统自动附加）。"
+    "5. 简体中文，不用 Markdown 符号，不写「作为AI」「以上回答」这类话。\n"
+    "6. 只输出正文，不要输出来源行（来源由系统附加）。"
 )
 
 MODE_HINTS = {
@@ -313,29 +314,28 @@ def _nums(s):
     return set(re.findall(r"\d+(?:\.\d+)?", s or ""))
 
 
-def ds_chat(cfg, query, mode, kb_hits, web_hits, timeout=20, budget=1200):
-    """返回 (text, meta) 或 (None, err)。"""
+def ds_chat(cfg, query, mode, web_hits, timeout=20, budget=1200, strict=True):
+    """先用联网检索结果生成回答；strict=False 时允许在联网为空时用知识库兜底。"""
     if not cfg["key"]:
         return None, "no_key"
 
     parts = ["用户提问：%s" % query, "输出模式：%s" % MODE_RULES.get(mode, MODE_RULES["fact"])]
-    if kb_hits:
-        parts.append("【知识库】")
-        for h in kb_hits[:3]:
-            src = (h.get("sources") or [{}])[0]
-            parts.append("- 问：%s\n  答：%s\n  来源：%s《%s》%s" % (
-                h.get("q"), h.get("a"), src.get("org", ""), src.get("doc", ""), src.get("date", "")))
     if web_hits:
-        parts.append("【联网检索（未人工复核，仅作补充）】")
-        for w in web_hits[:3]:
-            parts.append("- %s（%s）：%s" % (w["title"], w["site"], w["content"]))
-    if not kb_hits and not web_hits:
-        parts.append("【材料】无。请直接说明这个问题需要查证，并给出官方渠道建议。")
-
+        parts.append("【联网检索（本次唯一事实来源，按时间由新到旧给出）】")
+        for i, w in enumerate(web_hits[:4], 1):
+            parts.append("[%d] %s（%s，%s）\n%s" % (
+                i, w.get("title") or w.get("q") or "知识库条目",
+                w.get("site") or ((w.get("sources") or [{}])[0].get("org") or "知识库"),
+                w.get("date") or "日期未标注",
+                w.get("content") or w.get("a") or ""))
+    elif strict:
+        parts.append("【联网检索】无结果。")
     payload = {
         "model": cfg["model"],
-        "messages": [{"role": "system", "content": SYSTEM},
-                     {"role": "user", "content": "\n".join(parts)}],
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": "\n".join(parts)},
+        ],
         "temperature": 0.35,
         "max_tokens": budget,
         "stream": False,
@@ -358,22 +358,89 @@ def ds_chat(cfg, query, mode, kb_hits, web_hits, timeout=20, budget=1200):
     out = "\n".join(ln.rstrip() for ln in lines)
     finish = (data.get("choices") or [{}])[0].get("finish_reason")
     if not out:
-        # 常见原因：预算被推理 token 吃光（finish_reason=length）
         return None, "empty" + ("_length" if finish == "length" else "")
     if len(set(out) & TRAD) >= 2:
         return None, "traditional"
-    # 事实护栏：知识库命中时，模型不得出现知识库以外的数字
-    if kb_hits:
+    # 事实护栏：回答里的数字必须来自本次给出的材料（防止模型凭记忆补数）
+    if web_hits and strict:
         allowed = set()
-        for h in kb_hits[:3]:
-            allowed |= _nums(h.get("q", "")) | _nums(h.get("a", ""))
-        for w in web_hits[:3]:
-            allowed |= _nums(w.get("content", ""))
+        for w in web_hits[:4]:
+            allowed |= _nums(w.get("content", "")) | _nums(w.get("title", ""))
         extra = _nums(out) - allowed
         if extra:
             return None, "ungrounded:" + ",".join(sorted(extra)[:4])
     return {"text": out, "ms": int((time.time() - t0) * 1000),
             "tokens": usage.get("total_tokens"), "model": cfg["model"]}, None
+
+
+# ---------------------------------------------------------------- 知识库：只辨真伪
+
+STOP = set("的了是在和与及或这那都有为什么怎么什么哪里如何多少几哪请问一下一一一个".replace("一", ""))
+
+
+def _entities(text):
+    """抽出数值与实体词（2—5 字专名），用于判断"讲的是不是同一件事"。"""
+    t = str(text or "")
+    nums = set(re.findall(r"\d+(?:\.\d+)?%?", t))
+    cand = re.findall(r"[\u4e00-\u9fa5]{2,5}", t)
+    ents = {w for w in cand if not (set(w) & STOP) or len(w) >= 4}
+    return nums, ents
+
+
+def verify_against_kb(answer_text, kb_hits):
+    """知识库不做回答者，只做校对员：看联网生成的回答与库里记载是一致、冲突还是查无。
+
+    判据按可靠度排序：
+      1) 回答里的数值与库内某条记载同量级但不同值 → 冲突
+      2) 共享 ≥2 个实体且覆盖库内关键实体 ≥40% → 支持
+      3) 共享 1 个 ≥4 字专名（同一事实主体）→ 支持
+      4) 其余 → 查无（明确标注为联网实时生成）
+    """
+    if not kb_hits:
+        return {"level": "unknown", "matched": [], "conflicts": [],
+                "note": "知识库没有对应的权威条目，本回答依据联网检索实时生成。"}
+
+    a_nums, a_ents = _entities(answer_text)
+    best = None
+    for h in kb_hits:
+        k_nums, k_ents = _entities(h.get("a", ""))
+        _, q_ents = _entities(h.get("q", ""))
+        pool = k_ents | q_ents
+        shared = a_ents & pool
+        cov_kb = len(shared) / max(1, len(pool))
+        cov_ans = len(shared) / max(1, len(a_ents))
+        conflict = set()
+        for n in a_nums - k_nums:
+            for k in k_nums:
+                if len(n) == len(k) >= 3 and n[:2] == k[:2] and n != k:
+                    conflict.add(n)
+                    break
+        score = cov_kb * 0.7 + cov_ans * 0.3
+        if best is None or score > best["score"]:
+            best = {"entry": h, "score": score, "cov_kb": cov_kb, "cov_ans": cov_ans,
+                    "shared": shared, "conflict": conflict, "pool": len(pool),
+                    "nums_ok": bool(a_nums & k_nums)}
+
+    e = best["entry"]
+    matched = [{"id": e.get("id"), "q": e.get("q"), "a": e.get("a"),
+                "sources": e.get("sources"), "image": e.get("image")}]
+    src = (e.get("sources") or [{}])[0]
+    org = src.get("org") or "知识库"
+
+    if best["conflict"] and len(best["shared"]) >= 2:
+        return {"level": "conflict", "matched": matched,
+                "conflicts": [{"entry": e.get("q")}],
+                "note": "联网内容与库内记载的数值不一致，请以 %s 原始页面为准。" % org}
+
+    long_shared = {s for s in best["shared"] if len(s) >= 4}
+    if (len(best["shared"]) >= 2 and best["cov_kb"] >= 0.40) or long_shared or best["nums_ok"]:
+        return {"level": "support", "matched": matched, "conflicts": [],
+                "note": "库内《%s》的记载与此一致，可点开核对原文。" % (src.get("doc") or org)}
+    if best["pool"] <= 12 and best["cov_ans"] >= 0.5:
+        return {"level": "support", "matched": matched, "conflicts": [],
+                "note": "回答主体与库内记载吻合，库内条目可作佐证。"}
+    return {"level": "unknown", "matched": [], "conflicts": [],
+            "note": "库内相关条目未能佐证本回答，已标注为联网实时生成。"}
 
 
 # ---------------------------------------------------------------- 配图：每答必图
@@ -412,44 +479,50 @@ def pick_image(query, mode, kb_hits):
 
 
 def answer(query, mode, trace=False):
+    """联网实时生成 → 知识库核查真伪 → 附来源与唯一配图。"""
     t0 = time.time()
     cfg = llm_config()
-    # 知识库检索与联网检索并行，省掉一整个网络往返
-    box = {}
-    th = threading.Thread(target=lambda: box.update(web=ds_search(cfg, query)))
-    th.start()
-    kb_hits, kb = search_kb(query, 4)
-    th.join(timeout=8)
-    web_hits = box.get('web', [])
+    kb_hits, kb = search_kb(query, 3)
+    web_hits = ds_search(cfg, query)
 
     budget = {"fact": 900, "research": 1500, "moment": 700}.get(mode, 900)
-    text, err = ds_chat(cfg, query, mode, kb_hits, web_hits, timeout=22, budget=budget)
-    if not text:
+    text, err = ds_chat(cfg, query, mode, web_hits, timeout=22, budget=budget)
+    if not text and err:
         # 空输出常见于模型把预算花在推理上（finish_reason=length）：加预算重来一次
-        retry_budget = 2600 if (err and "length" in err) else 1500
-        text, err2 = ds_chat(cfg, query, mode, kb_hits, web_hits, timeout=16, budget=retry_budget)
+        retry_budget = 2600 if "length" in err else 1500
+        text, err2 = ds_chat(cfg, query, mode, web_hits, timeout=16, budget=retry_budget)
         err = err2 if not text else None
-    llm_ms = 0
-    if text:
-        llm_ms = text["ms"]
-    else:
-        # 降级：模式化拼装知识库内容（保证有答，不空手）
-        text = {"text": fallback_text(query, mode, kb_hits), "model": None,
-                "ms": 0, "tokens": 0}
+    if not text:
+        # 联网全空 / 调用失败时才退回知识库兜底，并明确标注
+        text, err3 = ds_chat(cfg, query, mode, kb_hits, timeout=16, budget=1500, strict=False)
+        if not text:
+            err = err3 or err
+    llm_ms = text["ms"] if text else 0
+    if not text:
+        text = {"text": fallback_text(query, mode, kb_hits), "model": None, "ms": 0, "tokens": 0}
 
+    # 核查：库内条目是否支持 / 冲突 / 查无
+    verdict = verify_against_kb(text["text"], kb_hits)
+
+    # 配图去重：整个回答只出一张
     img, img_src = pick_image(query, mode, kb_hits)
-    srcs = []
-    for h in kb_hits[:2]:
-        for s in h.get("sources") or []:
-            if s not in srcs:
-                srcs.append(s)
-    web = [{"title": w["title"], "site": w["site"], "url": w["url"]} for w in web_hits[:3]]
 
-    out = {
+    srcs = []
+    if verdict["level"] == "support":
+        for h in verdict["matched"][:1]:
+            for s in h.get("sources") or []:
+                if s not in srcs:
+                    srcs.append(s)
+    web = [{"title": w["title"], "site": w["site"], "url": w["url"], "date": w.get("date")}
+           for w in web_hits[:3]]
+
+    return {
         "ok": True,
         "mode": mode,
         "text": text["text"],
-        "kb": [{"id": h.get("id"), "q": h.get("q"), "kind": h.get("kind")} for h in kb_hits[:3]],
+        "current": bool(web_hits),                 # 是否基于本次联网实时结果
+        "verdict": verdict,
+        "kb": [{"id": h.get("id"), "q": h.get("q"), "kind": h.get("kind")} for h in kb_hits],
         "sources": srcs,
         "web": web,
         "image": img,
@@ -457,15 +530,22 @@ def answer(query, mode, trace=False):
         "model": text.get("model"),
         "llmMs": llm_ms,
         "usedWeb": bool(web_hits),
-        "usedKB": bool(kb_hits),
-        "degraded": err is not None and text.get("model") is None,
+        "degraded": text.get("model") is None,
         "error": err,
         "ms": int((time.time() - t0) * 1000),
         "kbVersion": kb.get("version"),
-    }
-    if not trace:
-        out.pop("error", None)
-    return out
+    } if trace else _public({
+        "ok": True, "mode": mode, "text": text["text"], "current": bool(web_hits),
+        "verdict": verdict, "kb": [{"id": h.get("id"), "q": h.get("q")} for h in kb_hits],
+        "sources": srcs, "web": web, "image": img, "imageSource": img_src,
+        "model": text.get("model"), "llmMs": llm_ms, "usedWeb": bool(web_hits),
+        "degraded": text.get("model") is None, "ms": int((time.time() - t0) * 1000),
+        "kbVersion": kb.get("version"),
+    })
+
+
+def _public(obj):
+    return obj
 
 
 def fallback_text(query, mode, kb_hits):

@@ -190,3 +190,22 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .shake{animation:shake .4s}
 @keyframes shake{0%,100%{transform:none}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}
   60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+
+/* ---------- 核查结论 ---------- */
+.verdict{margin-top:12px;border-radius:10px;padding:10px 12px;border:1px solid var(--line);background:#fff}
+.verdict.ok{border-left:4px solid #2E7D4F;background:#F4FAF6}
+.verdict.bad{border-left:4px solid #B3261E;background:#FDF3F2}
+.verdict.warn{border-left:4px solid var(--gold);background:#FFFBF4}
+.verdict-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.verdict-tag{font-size:12px;font-weight:700;letter-spacing:.04em}
+.verdict.ok .verdict-tag{color:#2E7D4F}
+.verdict.bad .verdict-tag{color:#B3261E}
+.verdict.warn .verdict-tag{color:#9A7326}
+.verdict-hint{font-size:11px;color:var(--grey)}
+.verdict-list{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.verdict-item{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:#3A2E29;
+  background:#F7F3EE;border-radius:7px;padding:6px 9px;cursor:pointer}
+.verdict-item.conflict{background:#FBEDEB;color:#8A1D16;cursor:default}
+.verdict-q{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.verdict-flag{flex:none;font-size:10.5px;color:#2E7D4F;border:1px solid #B7D9C4;border-radius:4px;padding:0 5px}
+.verdict-note{margin-top:8px;font-size:11.5px;color:var(--grey);line-height:1.6}

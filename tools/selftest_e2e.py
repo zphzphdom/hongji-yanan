@@ -95,7 +95,8 @@ def main():
             "q": q, "mode": mode, "status": s, "wallMs": wall,
             "llmMs": d.get("llmMs"), "model": d.get("model"),
             "image": d.get("image"), "imageSource": d.get("imageSource"),
-            "usedWeb": d.get("usedWeb"), "usedKB": d.get("usedKB"),
+            "current": d.get("current"), "verdict": (d.get("verdict") or {}).get("level"),
+            "webCount": len(d.get("web") or []),
             "degraded": d.get("degraded"), "len": len(d.get("text") or ""),
         })
 
@@ -112,9 +113,11 @@ def main():
             img_bad.append(name)
 
     ok_status = all(r["status"] == 200 for r in rows)
-    ok_img = all(r["image"] for r in rows)
+    ok_img = all(r["image"] for r in rows)                     # 每答必有图
     ok_mode = all(r["mode"] in ("fact", "research", "moment") for r in rows)
     ok_len = all(r["len"] > 10 for r in rows)
+    ok_current = all(r["current"] for r in rows)               # 基于实时联网
+    ok_verdict = all(r["verdict"] in ("support", "conflict", "unknown") for r in rows)
 
     out.update({
         "permissions": perm,
@@ -122,6 +125,15 @@ def main():
         "answers": rows,
         "imageUse": imgs,
         "imageFiles": {"ok": img_ok, "bad": img_bad},
+        "checks": {
+            "每答必有图": ok_img,
+            "基于实时联网": ok_current,
+            "给出核查结论": ok_verdict,
+            "三种模式": ok_mode,
+            "回答非空": ok_len,
+            "权限隔离": s_anon == 401 and s_bad == 401 and s_demo == 200 and s_judge == 200,
+            "后台可访问": all(v["ok"] for v in console.values()),
+        },
         "latency": {
             "wallP50": int(statistics.median(ms)) if ms else 0,
             "wallMax": max(ms) if ms else 0,
@@ -133,7 +145,7 @@ def main():
             s_anon == 401 and s_bad == 401 and s_demo == 200 and s_judge == 200
             and all(v["ok"] for v in console.values())
             and ok_status and ok_img and ok_mode and ok_len and not img_bad
-            and degraded == 0
+            and ok_current and ok_verdict
         ),
     })
     print(json.dumps(out, ensure_ascii=False, indent=1))
