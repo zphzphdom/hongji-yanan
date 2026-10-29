@@ -15,10 +15,6 @@
     if (LLM) meta += ' · 在线模型 ' + LLM;
     $('#kbMeta').textContent = meta;
     renderChips();
-    var st = window.__SELFTEST__;
-    $('#aboutStat').textContent = st
-      ? ('自测：' + st.selfHit + '/' + st.total + ' 条自身问法命中；越界提问拒答 ' + st.oosRefused + '/' + st.oosTotal + '。')
-      : ('知识库 ' + kb.count + ' 条，每条可追溯到原文。');
   }
 
   function refresh() {
@@ -429,9 +425,6 @@
     $('#srcMask').onclick = function (e) { if (e.target === this) this.classList.add('hidden'); };
     $('#cardClose').onclick = function () { $('#cardMask').classList.add('hidden'); };
     $('#cardMask').onclick = function (e) { if (e.target === this) this.classList.add('hidden'); };
-    $('#aboutBtn').onclick = function () { $('#aboutMask').classList.remove('hidden'); };
-    $('#aboutClose').onclick = function () { $('#aboutMask').classList.add('hidden'); };
-    $('#aboutMask').onclick = function (e) { if (e.target === this) this.classList.add('hidden'); };
     $('#dlBtn').onclick = function () {
       var c = $('#cardCanvas');
       c.toBlob(function (blob) {
@@ -476,23 +469,33 @@
   var token = localStorage.getItem('hy_token') || '';
   var me = null;
 
-  function api(path, body) {
+  function api(path, body, opts) {
+    opts = opts || {};
     var opt = { headers: { 'Content-Type': 'application/json' } };
     if (token) opt.headers.Authorization = 'Bearer ' + token;
     if (body) { opt.method = 'POST'; opt.body = JSON.stringify(body); }
     else opt.method = 'GET';
     return fetch(path, opt).then(function (r) {
-      if (r.status === 401) { showLogin(); throw new Error('unauthorized'); }
-      return r.json();
+      // 登录接口的 401 是"账号密码错"，要原样交回给登录框；其余 401 才说明会话过期
+      if (r.status === 401 && !opts.raw401) { showLogin(); throw new Error('unauthorized'); }
+      return r.json().catch(function () { return { ok: false, error: '服务返回异常（HTTP ' + r.status + '）' }; });
     });
   }
 
-  function showLogin() {
+  function showLogin(msg) {
     token = '';
     localStorage.removeItem('hy_token');
     $('#appView').classList.add('hidden');
     $('#consoleView').classList.add('hidden');
     $('#loginView').classList.remove('hidden');
+    if (msg) setLoginError(msg);
+  }
+
+  function setLoginError(msg) {
+    var box = $('#loginErr');
+    if (!box) return;
+    box.textContent = msg || '';
+    box.classList.toggle('show', !!msg);
   }
 
   function showApp(user) {
@@ -507,21 +510,34 @@
   function doLogin() {
     var u = $('#username').value.trim();
     var p = $('#password').value;
-    $('#loginErr').textContent = '';
+    setLoginError('');
+    if (!u || !p) {
+      setLoginError(!u ? '请输入账号' : '请输入密码');
+      (!u ? $('#username') : $('#password')).focus();
+      return;
+    }
     $('#loginBtn').disabled = true;
-    api('/api/login', { username: u, password: p }).then(function (j) {
+    $('#loginBtn').textContent = '登录中…';
+    api('/api/login', { username: u, password: p }, { raw401: true }).then(function (j) {
       $('#loginBtn').disabled = false;
+      $('#loginBtn').textContent = '进入';
       if (j && j.ok) {
         token = j.token;
         localStorage.setItem('hy_token', token);
         localStorage.setItem('hy_user', j.user);
+        $('#password').value = '';
         showApp(j);
       } else {
-        $('#loginErr').textContent = (j && j.error) || '登录失败';
+        setLoginError((j && j.error) || '登录失败，请重试');
+        $('#password').value = '';
+        $('#password').focus();
+        $('#password').classList.add('shake');
+        setTimeout(function () { $('#password').classList.remove('shake'); }, 420);
       }
     }).catch(function () {
       $('#loginBtn').disabled = false;
-      $('#loginErr').textContent = '网络异常，请重试';
+      $('#loginBtn').textContent = '进入';
+      setLoginError('无法连接服务器，请检查网络后重试');
     });
   }
 

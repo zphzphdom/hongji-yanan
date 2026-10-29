@@ -33,74 +33,59 @@
    "q": "宜川花椒有什么特点？",
    "mode": "fact",
    "status": 200,
-   "wallMs": 2293,
-   "llmMs": 1766,
+   "wallMs": 6484,
+   "llmMs": 4456,
    "model": "deepseek-flash",
    "image": "宜川花椒",
    "imageSource": "条目图片",
    "usedWeb": true,
    "usedKB": true,
    "degraded": false,
-   "len": 114
+   "len": 106
   },
   {
    "q": "南泥湾大生产运动是怎么回事？",
    "mode": "research",
    "status": 200,
-   "wallMs": 1591,
-   "llmMs": 1186,
+   "wallMs": 4136,
+   "llmMs": 3659,
    "model": "deepseek-flash",
    "image": "延安大桥和宝塔山",
    "imageSource": "默认图",
    "usedWeb": true,
    "usedKB": true,
    "degraded": false,
-   "len": 134
+   "len": 137
   },
   {
    "q": "宝塔山为什么是延安的象征？",
    "mode": "moment",
    "status": 200,
-   "wallMs": 2759,
-   "llmMs": 2367,
+   "wallMs": 4147,
+   "llmMs": 3550,
    "model": "deepseek-flash",
    "image": "宝塔山·仰拍",
    "imageSource": "条目图片",
    "usedWeb": true,
    "usedKB": true,
    "degraded": false,
-   "len": 53
-  },
-  {
-   "q": "子长粉条怎么吃？",
-   "mode": "fact",
-   "status": 200,
-   "wallMs": 2083,
-   "llmMs": 1627,
-   "model": "deepseek-flash",
-   "image": "子长粉条",
-   "imageSource": "条目图片",
-   "usedWeb": true,
-   "usedKB": true,
-   "degraded": false,
-   "len": 108
+   "len": 51
   }
  ],
  "imageUse": {
   "宜川花椒": 1,
   "延安大桥和宝塔山": 1,
-  "宝塔山·仰拍": 1,
-  "子长粉条": 1
+  "宝塔山·仰拍": 1
  },
  "imageFiles": {
-  "ok": 4,
+  "ok": 3,
   "bad": []
  },
  "latency": {
-  "wallP50": 2188,
-  "wallMax": 2759,
-  "llmP50": 1696,
-  "llmMax": 2367
+  "wallP50": 4147,
+  "wallMax": 6484,
+  "llmP50": 3659,
+  "llmMax": 4456
  },
  "degraded": 0,
  "pass": true
