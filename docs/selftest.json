@@ -30,6 +30,6 @@
    }
   ]
  },
- "latencyMs": 0.06,
+ "latencyMs": 0.07,
  "threshold": 0.33
 }

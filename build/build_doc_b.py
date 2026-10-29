@@ -86,7 +86,7 @@ def doc07(public_url):
         ["web/app.js", "交互、来源抽屉、问答卡 Canvas 绘制", "卡片版式在这一层"],
         ["data/kb.json", "知识库（50 条，含来源索引），页面每 45 秒检查一次版本", "由 build/build_kb.py 生成"],
         ["web/kb.js", "知识库的内嵌副本，断网/纯静态托管时兜底", "同上，自动生成"],
-        ["tools/sync_kb.py", "联网校验 26 个来源链接，写 data/kb_health.json", "可加 --watch 定时"],
+        ["tools/sync_kb.py", "联网校验 31 个来源链接，写 data/kb_health.json", "可加 --watch 定时"],
         ["tools/selftest.js", "自测：命中率、同义问法、越界拒答、时延", "改问句集即可"],
     ], widths=[3.8, 9.2, 3.6], size=8.8, align_center=[0])
 
@@ -113,7 +113,7 @@ def doc07(public_url):
 
     h1(doc, "五、知识库怎么“跟网络一起更新”", "5")
     p(doc, "分两步，互不干扰：", indent=True)
-    num_item(doc, 1, "**校验**：`python tools/sync_kb.py`（或 --watch 6）逐条打开 26 个来源链接，记录可达性、耗时、"
+    num_item(doc, 1, "**校验**：`python tools/sync_kb.py`（或 --watch 6）逐条打开 31 个来源链接，记录可达性、耗时、"
                      "校验时间到 data/kb_health.json。这一步不改知识库，只证明“来源还活着”。")
     num_item(doc, 2, "**更新**：确需改内容时，改 build/kb_spec.py 里的问答，跑 `python build/build_kb.py` 重新生成 "
                      "data/kb.json 与 web/kb.js，版本号（sha1 前 12 位）自动变化。")
@@ -193,7 +193,7 @@ def doc08(public_url):
 
     h1(doc, "四、怎么复跑", "4")
     quote(doc, "node tools/selftest.js          # 输出 docs/selftest.json\n"
-               "python tools/sync_kb.py         # 联网校验 26 个来源，输出 data/kb_health.json\n"
+               "python tools/sync_kb.py         # 联网校验 31 个来源，输出 data/kb_health.json\n"
                "python build/build_kb.py        # 改完问答后重建知识库并升版本\n"
                "python run.py --port 8788       # 起服务，手机扫局域网地址")
     p(doc, "演示地址：%s" % public_url, size=9, color=GREY)
