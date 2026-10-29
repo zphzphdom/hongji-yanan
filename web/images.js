@@ -1,4 +1,4 @@
-/* 自动生成：build/finish_images.py */
+/* 自动生成 */
 window.RED_IMAGES = {
  "吴起荞麦": {
   "file": "images/吴起荞麦.webp",
@@ -22,7 +22,7 @@ window.RED_IMAGES = {
  },
  "宝塔山": {
   "file": "images/宝塔山.webp",
-  "alt": "延安宝塔山（蓝天下的宝塔）",
+  "alt": "宝塔山（配图）",
   "credit": "配图：宝塔山"
  },
  "宝塔山·仰拍": {
@@ -50,6 +50,11 @@ window.RED_IMAGES = {
   "alt": "宝塔山·雪后（配图）",
   "credit": "配图：宝塔山·雪后"
  },
+ "延安大桥和宝塔山": {
+  "file": "images/延安大桥和宝塔山.webp",
+  "alt": "延安大桥和宝塔山（配图）",
+  "credit": "配图：延安大桥和宝塔山"
+ },
  "延安小米": {
   "file": "images/延安小米.webp",
   "alt": "延安小米（配图）",
@@ -59,6 +64,11 @@ window.RED_IMAGES = {
   "file": "images/延安苹果.webp",
   "alt": "延安苹果（配图）",
   "credit": "配图：延安苹果"
+ },
+ "延川红枣": {
+  "file": "images/延川红枣.webp",
+  "alt": "延川红枣（配图）",
+  "credit": "配图：延川红枣"
  },
  "志丹杏仁": {
   "file": "images/志丹杏仁.webp",

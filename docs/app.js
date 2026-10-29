@@ -2,7 +2,7 @@
   'use strict';
   var E = window.RedEngine;
   var $ = function (s) { return document.querySelector(s); };
-  var KB = window.RED_KB, idx = null, mode = 'fact', lastAnswer = null, qrImg = null, LLM = null;
+  var KB = window.RED_KB, idx = null, mode = 'fact', lastAnswer = null, qrImg = null, LLM = null, sending = false;
 
   var CHIPS = ['A01', 'A09', 'A04', 'A18', 'A10', 'B05', 'C01', 'E04'];
 
@@ -84,9 +84,14 @@
     var m = el('div', 'msg');
     var b = el('div', 'bubble' + (r.refused ? ' refused' : ''));
 
-    if (r.mode === 'research') b.appendChild(el('div', 'mode-note', '研学讲解词'));
-    if (r.mode === 'moment') b.appendChild(el('div', 'mode-note', '一句话'));
-    if (r.llm) b.appendChild(el('div', 'mode-note', '在线模型 ' + r.llm + ' 改写 · 事实来自知识库'));
+    var tags = [];
+    if (r.mode === 'research') tags.push('研学讲解词');
+    if (r.mode === 'moment') tags.push('一句话');
+    if (r.degraded) tags.push('本地兜底');
+    if (r.model) tags.push(r.model + ' 生成');
+    if (r.usedWeb) tags.push('已联网补充');
+    if (r.imageSource) tags.push('配图：' + r.imageSource);
+    if (tags.length) b.appendChild(el('div', 'mode-note', tags.join(' · ')));
 
     var a = el('div', 'answer');
     if (r.refused) {
@@ -105,6 +110,8 @@
         a.appendChild(p);
       });
     }
+    // 先图后文：图片能立刻给出讲的是哪个点，正文随后出
+    if (r.image) b.appendChild(imageBlock(r.image));
     b.appendChild(a);
 
     if (r.sources && r.sources.length) {
@@ -115,6 +122,15 @@
         row.appendChild(t);
       });
       b.appendChild(row);
+    }
+    if (r.web && r.web.length) {
+      var wr = el('div', 'web-row');
+      r.web.slice(0, 2).forEach(function (w) {
+        var t = el('span', 'web-tag', '联网 · ' + (w.site || w.title).slice(0, 16));
+        t.title = w.title + ' ' + (w.url || '');
+        wr.appendChild(t);
+      });
+      b.appendChild(wr);
     }
 
     if (r.image) b.appendChild(imageBlock(r.image));
@@ -140,45 +156,44 @@
     scroll();
   }
 
-  /* ---------------- 提问 ---------------- */
+  /* ---------------- 提问：全部交给服务端（知识库 + DeepSeek 联网 + 模型整合） ---------------- */
   function ask(text) {
     text = String(text || '').trim();
-    if (!text) return;
+    if (!text || sending) return;
     var intro = $('#intro');
     if (intro) intro.remove();
     addUser(text);
     $('#input').value = '';
     $('#input').style.height = 'auto';
     var tip = addTyping();
+    sending = true;
 
-    setTimeout(function () {
-      var r;
-      try { r = E.ask(idx, text, mode); }
-      catch (err) { r = { refused: true, text: '引擎出了点问题，请刷新重试。', sources: [] }; }
+    function render(r) {
+      tip.remove();
       r.mode = mode;
+      addAnswer(r, text);
+      lastAnswer = { r: r, q: text };
+      sending = false;
+    }
 
-      function render() {
-        tip.remove();
-        addAnswer(r, text);
-        lastAnswer = { r: r, q: text };
-        log(text, r);
-      }
-
-      // 有服务端模型时：只把"已核对的答案"交给模型改写，事实仍由知识库决定
-      if (LLM && !r.refused && r.raw) {
-        fetch('api/chat', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: text, answer: r.raw, mode: mode, id: r.entryId, score: r.score })
-        }).then(function (x) { return x.ok ? x.json() : null; })
-          .then(function (j) {
-            if (j && j.ok && j.answer) { r.text = j.answer; r.llm = j.model; r.llmMs = j.ms; }
-            render();
-          })
-          .catch(function () { render(); });
+    api('/api/ask', { question: text, mode: mode }).then(function (j) {
+      if (j && j.ok) {
+        render(j);
       } else {
-        render();
+        // 服务端不可用时才退回本地引擎，保证"永远答得出来"
+        var r;
+        try { r = E.ask(idx, text, mode); } catch (e) { r = { refused: true, text: '服务暂不可用，请稍后重试。', sources: [] }; }
+        if (!r.image) r.image = '宝塔山';
+        r.degraded = true;
+        render(r);
       }
-    }, 300);
+    }).catch(function () {
+      var r;
+      try { r = E.ask(idx, text, mode); } catch (e) { r = { refused: true, text: '网络异常，请重试。', sources: [] }; }
+      if (!r.image) r.image = '宝塔山';
+      r.degraded = true;
+      render(r);
+    });
   }
 
   function log(q, r) {
@@ -454,6 +469,184 @@
     qrImg = new Image();
     qrImg.onload = function () { if (lastAnswer) drawCard(lastAnswer.r, lastAnswer.q); };
     qrImg.src = 'qr.png';
+    initAuth();
+  }
+
+  /* ================= 登录与后台 ================= */
+  var token = localStorage.getItem('hy_token') || '';
+  var me = null;
+
+  function api(path, body) {
+    var opt = { headers: { 'Content-Type': 'application/json' } };
+    if (token) opt.headers.Authorization = 'Bearer ' + token;
+    if (body) { opt.method = 'POST'; opt.body = JSON.stringify(body); }
+    else opt.method = 'GET';
+    return fetch(path, opt).then(function (r) {
+      if (r.status === 401) { showLogin(); throw new Error('unauthorized'); }
+      return r.json();
+    });
+  }
+
+  function showLogin() {
+    token = '';
+    localStorage.removeItem('hy_token');
+    $('#appView').classList.add('hidden');
+    $('#consoleView').classList.add('hidden');
+    $('#loginView').classList.remove('hidden');
+  }
+
+  function showApp(user) {
+    me = user;
+    $('#loginView').classList.add('hidden');
+    $('#consoleView').classList.add('hidden');
+    $('#appView').classList.remove('hidden');
+    $('#consoleWho').textContent = user.user + ' · ' + (user.label || user.role);
+    $('#statusHint').textContent = '账号 ' + user.user + ' · DeepSeek 生成中…';
+  }
+
+  function doLogin() {
+    var u = $('#username').value.trim();
+    var p = $('#password').value;
+    $('#loginErr').textContent = '';
+    $('#loginBtn').disabled = true;
+    api('/api/login', { username: u, password: p }).then(function (j) {
+      $('#loginBtn').disabled = false;
+      if (j && j.ok) {
+        token = j.token;
+        localStorage.setItem('hy_token', token);
+        localStorage.setItem('hy_user', j.user);
+        showApp(j);
+      } else {
+        $('#loginErr').textContent = (j && j.error) || '登录失败';
+      }
+    }).catch(function () {
+      $('#loginBtn').disabled = false;
+      $('#loginErr').textContent = '网络异常，请重试';
+    });
+  }
+
+  function openConsole() {
+    $('#appView').classList.add('hidden');
+    $('#consoleView').classList.remove('hidden');
+    loadTab('dash');
+  }
+
+  function loadTab(tab) {
+    [].forEach.call($('#consoleTabs').children, function (b) {
+      b.classList.toggle('on', b.dataset.tab === tab);
+    });
+    $('#tab-dash').classList.toggle('hidden', tab !== 'dash');
+    $('#tab-logs').classList.toggle('hidden', tab !== 'logs');
+    $('#tab-kb').classList.toggle('hidden', tab !== 'kb');
+    if (tab === 'dash') loadDash();
+    if (tab === 'logs') loadLogs();
+    if (tab === 'kb') loadKbConsole();
+  }
+
+  function statCard(label, value, note) {
+    return '<div class="stat"><div class="stat-v">' + value + '</div>' +
+      '<div class="stat-l">' + label + '</div>' +
+      (note ? '<div class="stat-n">' + note + '</div>' : '') + '</div>';
+  }
+
+  function loadDash() {
+    api('/api/console/dashboard').then(function (d) {
+      if (!d || d.error) { $('#tab-dash').innerHTML = '<div class="empty">无权访问</div>'; return; }
+      var byMode = Object.keys(d.byMode || {}).map(function (k) {
+        return '<span class="pill">' + k + ' ' + d.byMode[k] + '</span>';
+      }).join('');
+      var recent = (d.recent || []).map(function (r) {
+        return '<div class="logline"><span class="log-t">' + (r.t || '') + '</span>' +
+          '<span class="log-u">' + (r.user || '-') + '</span>' +
+          '<span class="log-q">' + esc(r.q || ('[' + (r.event || '') + ']')) + '</span>' +
+          '<span class="log-m">' + (r.mode || '') + (r.image ? ' · 图' : '') +
+          (r.web ? ' · 联网' : '') + (r.ms ? ' · ' + r.ms + 'ms' : '') + '</span></div>';
+      }).join('');
+      $('#tab-dash').innerHTML =
+        '<div class="section-title">总览</div><div class="stats">' +
+        statCard('问答总数', d.total, '日志条数') +
+        statCard('配图覆盖率', d.imageRate + '%', d.withImage + ' 条带图') +
+        statCard('联网补充率', d.webRate + '%', d.usedWeb + ' 条用了联网') +
+        statCard('拒答数', d.refused, '占比 ' + d.refusedRate + '%') +
+        statCard('P50 时延', d.p50 + 'ms', 'P90 ' + d.p90 + 'ms') +
+        statCard('知识库', (d.kb.count || '-') + ' 条', (d.kb.sources || '-') + ' 个来源 · v' + (d.kb.version || '')) +
+        '</div>' +
+        '<div class="section-title">模式分布</div><div class="pills">' + (byMode || '<span class="muted">暂无</span>') + '</div>' +
+        '<div class="section-title">来源可用性</div><div class="muted">' +
+        (d.sourceHealth && d.sourceHealth.total ?
+          ('最近校验 ' + d.sourceHealth.checked + '：' + d.sourceHealth.ok + '/' + d.sourceHealth.total + ' 可打开') :
+          '尚未校验') + '</div>' +
+        '<div class="section-title">最近提问</div><div class="loglist">' + (recent || '<div class="muted">暂无</div>') + '</div>';
+    });
+  }
+
+  function loadLogs() {
+    api('/api/console/logs?limit=100').then(function (d) {
+      var rows = (d.logs || []).map(function (r) {
+        return '<tr><td>' + (r.t || '') + '</td><td>' + (r.user || '-') + '</td><td class="q">' +
+          esc(r.q || ('[' + (r.event || '') + ']')) + '</td><td>' + (r.mode || '') + '</td><td>' +
+          (r.kb ? (Array.isArray(r.kb) ? r.kb.join(',') : r.kb) : '') + '</td><td>' +
+          (r.image || '') + '</td><td>' + (r.web ? '是' : '') + '</td><td>' + (r.ms || '') + '</td></tr>';
+      }).join('');
+      $('#tab-logs').innerHTML = '<div class="section-title">提问日志（最近 100 条）</div>' +
+        '<div class="table-wrap"><table class="log-table"><thead><tr><th>时间</th><th>账号</th><th>问句</th>' +
+        '<th>模式</th><th>命中</th><th>配图</th><th>联网</th><th>ms</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="8" class="muted">暂无记录</td></tr>') + '</tbody></table></div>';
+    });
+  }
+
+  function loadKbConsole() {
+    api('/api/console/kb').then(function (kb) {
+      var rows = (kb.entries || []).map(function (e) {
+        var s = (e.sources || [{}])[0];
+        return '<tr><td>' + e.id + '</td><td class="q">' + esc(e.q) + '</td><td class="q">' +
+          esc(String(e.a || '').slice(0, 60)) + '…</td><td>' + (e.kind || '') + '</td><td>' +
+          (e.image || '') + '</td><td>' + esc(s.org || '') + '<br><span class="muted">' + esc(s.date || '') + '</span></td></tr>';
+      }).join('');
+      $('#tab-kb').innerHTML = '<div class="section-title">知识库 · ' + kb.count + ' 条 / ' + kb.sources +
+        ' 个来源 · v' + kb.version + '</div>' +
+        '<div class="table-wrap"><table class="log-table"><thead><tr><th>编号</th><th>问题</th><th>标准回答</th>' +
+        '<th>类型</th><th>配图</th><th>来源</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    });
+  }
+
+  function initAuth() {
+    bindAuth();
+    if (!token) { showLogin(); return; }
+    api('/api/capabilities').then(function () {
+      // 用一次需要登录的接口验证 token
+      return api('/api/console/dashboard');
+    }).then(function (d) {
+      if (d && !d.error) {
+        showApp({ user: localStorage.getItem('hy_user') || 'user', label: '已登录', role: 'demo' });
+      } else {
+        showLogin();
+      }
+    }).catch(function () { showLogin(); });
+  }
+
+  function bindAuth() {
+    $('#loginBtn').onclick = doLogin;
+    $('#password').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    [].forEach.call(document.querySelectorAll('.acct'), function (a) {
+      a.onclick = function () {
+        $('#username').value = a.dataset.u;
+        $('#password').value = a.dataset.p;
+      };
+    });
+    $('#logoutBtn').onclick = function () {
+      api('/api/logout', {}).catch(function () {});
+      showLogin();
+    };
+    $('#consoleBtn').onclick = openConsole;
+    $('#backBtn').onclick = function () {
+      $('#consoleView').classList.add('hidden');
+      $('#appView').classList.remove('hidden');
+    };
+    $('#consoleTabs').addEventListener('click', function (e) {
+      var b = e.target.closest('.mode');
+      if (b) loadTab(b.dataset.tab);
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

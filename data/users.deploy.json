@@ -1,0 +1,39 @@
+{
+ "users": {
+  "demo": {
+   "salt": "bf120ed508670df1",
+   "hash": "6d9867235169414235fc75bb071616a9d1a1bec155e2fe497782712c016e8804",
+   "role": "demo",
+   "admin": false,
+   "label": "演示账号",
+   "allow": [
+    "chat",
+    "console"
+   ]
+  },
+  "judge": {
+   "salt": "685cc49a25efb5d3",
+   "hash": "7370a0b56fabe228e76c9e68f05776d416e6e7fb011de7ab572d0ffc7370cbe4",
+   "role": "judge",
+   "admin": false,
+   "label": "评审账号",
+   "allow": [
+    "chat",
+    "console"
+   ]
+  },
+  "admin": {
+   "salt": "3a4d8d86e81d5dcd",
+   "hash": "fb516a37fecdccb9f11e6cbcd7a2f58a2aa75ad458dd14d6bff10264b0ce8d52",
+   "role": "admin",
+   "admin": true,
+   "label": "管理员",
+   "allow": [
+    "chat",
+    "console",
+    "write"
+   ]
+  }
+ },
+ "created": "2026-10-29 23:39:55"
+}

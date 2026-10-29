@@ -8,15 +8,43 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="app">
 
+<!-- 登录 -->
+<div class="login" id="loginView">
+  <div class="login-card">
+    <div class="login-hero">
+      <div class="brand-name big">红迹·延安</div>
+      <div class="brand-sub">AI 讲解员 · 延小讲</div>
+      <p class="login-pitch">在延安，问一句有出处的话。<br>三种问法全部由 DeepSeek 结合知识库与联网检索生成，每条回答都附来源与图片。</p>
+    </div>
+    <div class="login-form">
+      <label>账号</label>
+      <input id="username" autocomplete="username" placeholder="demo / judge">
+      <label>密码</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码">
+      <button class="btn-primary" id="loginBtn">进入</button>
+      <div class="err" id="loginErr"></div>
+      <div class="login-accounts">
+        <div class="acct" data-u="demo" data-p="demo2026"><b>demo</b> / demo2026<span>演示：问答 + 后台只读</span></div>
+        <div class="acct" data-u="judge" data-p="judge2026"><b>judge</b> / judge2026<span>评审：问答 + 后台只读</span></div>
+      </div>
+      <div class="login-hint">登录后可查看看板、知识库与提问日志。日志只记录问句、模式与响应时延，不含个人信息。</div>
+    </div>
+  </div>
+</div>
+
+<!-- 应用 -->
+<div class="app hidden" id="appView">
   <header class="top">
     <div class="top-row">
       <div class="brand">
         <span class="brand-name">红迹·延安</span>
         <span class="brand-sub">AI 讲解员 · 延小讲</span>
       </div>
-      <button class="icon-btn" id="aboutBtn" aria-label="关于">?</button>
+      <div class="top-actions">
+        <button class="ghost-btn" id="consoleBtn">后台</button>
+        <button class="icon-btn" id="logoutBtn" aria-label="退出">⎋</button>
+      </div>
     </div>
     <div class="meta" id="kbMeta">知识库载入中…</div>
     <div class="modes" id="modes" role="tablist">
@@ -29,7 +57,7 @@
   <main class="chat" id="chat">
     <section class="intro" id="intro">
       <h1>在延安，问一句有出处的话</h1>
-      <p>我只答知识库里的 50 条史实，每条都标来源；没有的，我会直说“需要查证”。</p>
+      <p>知识库检索 + DeepSeek 联网 + 模型整合，每条回答都标来源、都配图；查不到的会直说“需要查证”。</p>
       <div class="chips" id="chips"></div>
     </section>
   </main>
@@ -39,13 +67,32 @@
       <textarea id="input" rows="1" placeholder="问点什么，比如：宝塔山为什么是延安的象征？"></textarea>
       <button class="send" id="sendBtn">发送</button>
     </div>
-    <div class="hint">只讲延安红色文旅 · 不猜数字 · 不给实时信息</div>
+    <div class="hint" id="statusHint">DeepSeek 生成中…</div>
   </footer>
 </div>
 
-<!-- 来源详情 -->
+<!-- 后台 -->
+<div class="console hidden" id="consoleView">
+  <header class="top console-top">
+    <div class="top-row">
+      <div class="brand"><span class="brand-name">后台</span><span class="brand-sub" id="consoleWho">—</span></div>
+      <button class="ghost-btn" id="backBtn">返回问答</button>
+    </div>
+    <div class="tabs" id="consoleTabs">
+      <button class="mode on" data-tab="dash">看板</button>
+      <button class="mode" data-tab="logs">日志</button>
+      <button class="mode" data-tab="kb">数据库</button>
+    </div>
+  </header>
+  <main class="console-body">
+    <section id="tab-dash"></section>
+    <section id="tab-logs" class="hidden"></section>
+    <section id="tab-kb" class="hidden"></section>
+  </main>
+</div>
+
 <div class="sheet-mask hidden" id="srcMask">
-  <div class="sheet" id="srcSheet">
+  <div class="sheet">
     <div class="sheet-grab"></div>
     <h3 id="srcTitle">来源</h3>
     <div id="srcBody"></div>
@@ -53,7 +100,6 @@
   </div>
 </div>
 
-<!-- 问答卡 -->
 <div class="sheet-mask hidden" id="cardMask">
   <div class="sheet card-sheet">
     <div class="sheet-grab"></div>
@@ -64,20 +110,6 @@
       <button class="btn ghost" id="cardClose">关闭</button>
     </div>
     <div class="card-tip">手机上也可长按图片保存</div>
-  </div>
-</div>
-
-<!-- 关于 -->
-<div class="sheet-mask hidden" id="aboutMask">
-  <div class="sheet">
-    <div class="sheet-grab"></div>
-    <h3>关于这个讲解员</h3>
-    <p class="about-p">红迹·延安是一个只讲延安红色文旅的问答讲解员。它的全部知识来自 50 条带来源的问答，
-      每条回答末尾的 <b>[Sxx]</b> 可以点开，直达政府网、部委或央媒原文。</p>
-    <p class="about-p">它不猜：知识库没有的说“需要查证”；天气、客流、余票这类实时信息一律给官方渠道；
-      遇到两种公开口径（如馆藏量），两种都列，不合并、不平均。</p>
-    <div class="about-stat" id="aboutStat"></div>
-    <button class="btn ghost" id="aboutClose">知道了</button>
   </div>
 </div>
 

@@ -121,3 +121,66 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .lightbox.hidden{display:none}
 .lightbox img{max-width:100%;max-height:80vh;border-radius:8px}
 .lb-credit{color:#D9C9C9;font-size:12px;margin-top:14px}
+
+/* ---------- 登录 ---------- */
+.hidden{display:none !important}
+.login{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(160deg,#8C1F28,#6B1219 70%);padding:24px}
+.login-card{width:100%;max-width:860px;background:var(--cream);border-radius:18px;overflow:hidden;
+  display:grid;grid-template-columns:1.2fr 1fr;box-shadow:0 24px 60px rgba(0,0,0,.28)}
+.login-hero{padding:38px 34px;background:linear-gradient(150deg,#8C1F28,#6B1219);color:#fff}
+.brand-name.big{font-size:34px;letter-spacing:.16em}
+.login-pitch{margin-top:16px;font-size:14px;line-height:1.9;color:#F3D9B8}
+.login-form{padding:34px 30px;display:flex;flex-direction:column;gap:8px}
+.login-form label{font-size:12px;color:var(--grey);margin-top:10px}
+.login-form input{border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:15px;
+  font-family:var(--sans);background:#fff;outline:none}
+.login-form input:focus{border-color:var(--gold)}
+.btn-primary{margin-top:16px;border:none;background:var(--red);color:#fff;border-radius:10px;
+  padding:13px;font-size:15px;cursor:pointer;font-family:var(--sans)}
+.btn-primary:disabled{opacity:.6}
+.err{color:#B3261E;font-size:12.5px;min-height:16px}
+.login-accounts{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+.acct{font-size:12px;color:var(--grey);border:1px dashed var(--line);border-radius:8px;
+  padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.acct:hover{border-color:var(--gold)}
+.acct b{color:var(--red)}
+.login-hint{margin-top:12px;font-size:11px;color:#A6978E;line-height:1.7}
+@media (max-width:720px){.login-card{grid-template-columns:1fr}.login-hero{padding:26px 22px}}
+
+/* ---------- 顶栏按钮 ---------- */
+.top-actions{display:flex;gap:8px;align-items:center}
+.ghost-btn{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;
+  border-radius:16px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:var(--sans)}
+
+/* ---------- 后台 ---------- */
+.console{min-height:100vh;display:flex;flex-direction:column;background:var(--cream)}
+.console-top{padding-bottom:0}
+.tabs{display:flex;gap:6px;margin-top:12px}
+.console-body{padding:20px 18px 60px;max-width:900px;margin:0 auto;width:100%}
+.section-title{margin:22px 0 10px;font-size:14px;font-weight:700;color:var(--red);
+  font-family:var(--serif);letter-spacing:.04em}
+.section-title:first-child{margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat-v{font-size:24px;font-weight:700;color:var(--red);font-family:var(--serif)}
+.stat-l{font-size:12px;color:var(--ink);margin-top:2px}
+.stat-n{font-size:11px;color:#A6978E;margin-top:4px}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:12px;background:#F3EAE2;border-radius:14px;padding:4px 12px;color:#4A3A34}
+.loglist{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.logline{display:grid;grid-template-columns:78px 70px 1fr auto;gap:10px;padding:9px 12px;
+  font-size:12px;border-bottom:1px solid #F3EAE2;align-items:center}
+.logline:last-child{border-bottom:none}
+.log-t{color:#A6978E}
+.log-u{color:var(--red);font-weight:600}
+.log-q{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-m{color:var(--grey);font-size:11px}
+.table-wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th{background:#8C1F28;color:#fff;font-weight:600;padding:9px 10px;text-align:left;white-space:nowrap}
+.log-table td{padding:8px 10px;border-bottom:1px solid #F3EAE2;vertical-align:top}
+.log-table td.q{max-width:320px;color:#3A2E29}
+.empty,.muted{color:#A6978E;font-size:13px;padding:6px 2px}
+.web-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.web-tag{font-size:11px;color:#4A3A34;background:#F3F6F1;border:1px solid #DCE6D8;border-radius:5px;padding:3px 8px}

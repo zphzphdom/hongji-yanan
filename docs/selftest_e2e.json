@@ -1,0 +1,224 @@
+{
+ "base": "http://127.0.0.1:8788",
+ "permissions": {
+  "anonConsole": 401,
+  "badPassword": 401,
+  "demoLogin": 200,
+  "judgeLogin": 200,
+  "demoAllow": [
+   "chat",
+   "console"
+  ],
+  "judgeAllow": [
+   "chat",
+   "console"
+  ]
+ },
+ "console": {
+  "dashboard": {
+   "status": 200,
+   "ok": true
+  },
+  "logs": {
+   "status": 200,
+   "ok": true
+  },
+  "kb": {
+   "status": 200,
+   "ok": true
+  }
+ },
+ "answers": [
+  {
+   "q": "宜川花椒有什么特点？",
+   "mode": "fact",
+   "status": 200,
+   "wallMs": 3182,
+   "llmMs": 2272,
+   "model": "deepseek-flash",
+   "image": "宜川花椒",
+   "imageSource": "条目图片",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 90
+  },
+  {
+   "q": "南泥湾大生产运动是怎么回事？",
+   "mode": "research",
+   "status": 200,
+   "wallMs": 3611,
+   "llmMs": 3002,
+   "model": "deepseek-flash",
+   "image": "延安大桥和宝塔山",
+   "imageSource": "默认图",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 156
+  },
+  {
+   "q": "宝塔山为什么是延安的象征？",
+   "mode": "moment",
+   "status": 200,
+   "wallMs": 2512,
+   "llmMs": 1841,
+   "model": "deepseek-flash",
+   "image": "宝塔山·仰拍",
+   "imageSource": "条目图片",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 43
+  },
+  {
+   "q": "子长粉条怎么吃？",
+   "mode": "fact",
+   "status": 200,
+   "wallMs": 2560,
+   "llmMs": 1954,
+   "model": "deepseek-flash",
+   "image": "子长粉条",
+   "imageSource": "条目图片",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 112
+  },
+  {
+   "q": "党的七大是什么时候开的？",
+   "mode": "research",
+   "status": 200,
+   "wallMs": 4192,
+   "llmMs": 3731,
+   "model": "deepseek-flash",
+   "image": "延安大桥和宝塔山",
+   "imageSource": "默认图",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 163
+  },
+  {
+   "q": "壶口瀑布值得去吗？",
+   "mode": "moment",
+   "status": 200,
+   "wallMs": 4196,
+   "llmMs": 3478,
+   "model": "deepseek-flash",
+   "image": "宝塔山·日出",
+   "imageSource": "默认图",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 54
+  },
+  {
+   "q": "延安有哪些 5A 级景区？",
+   "mode": "fact",
+   "status": 200,
+   "wallMs": 3272,
+   "llmMs": 2550,
+   "model": "deepseek-flash",
+   "image": "延安小米",
+   "imageSource": "条目图片",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 113
+  },
+  {
+   "q": "黄龙核桃好在哪里？",
+   "mode": "research",
+   "status": 200,
+   "wallMs": 9630,
+   "llmMs": 8940,
+   "model": "deepseek-flash",
+   "image": "黄龙核桃",
+   "imageSource": "条目图片",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 210
+  },
+  {
+   "q": "从西安到延安怎么走最快？",
+   "mode": "moment",
+   "status": 200,
+   "wallMs": 1834,
+   "llmMs": 1113,
+   "model": "deepseek-flash",
+   "image": "宝塔山·日出",
+   "imageSource": "默认图",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 52
+  },
+  {
+   "q": "延安有多少地理标志产品？",
+   "mode": "fact",
+   "status": 200,
+   "wallMs": 3484,
+   "llmMs": 2746,
+   "model": "deepseek-flash",
+   "image": "宝塔山",
+   "imageSource": "默认图",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 105
+  },
+  {
+   "q": "杨家岭有什么标志性建筑？",
+   "mode": "research",
+   "status": 200,
+   "wallMs": 5225,
+   "llmMs": 4592,
+   "model": "deepseek-flash",
+   "image": "黄龙蜂蜜",
+   "imageSource": "条目图片",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 172
+  },
+  {
+   "q": "清凉山为什么被称为红色新闻山？",
+   "mode": "moment",
+   "status": 200,
+   "wallMs": 6882,
+   "llmMs": 1961,
+   "model": "deepseek-flash",
+   "image": "宝塔山·日出",
+   "imageSource": "默认图",
+   "usedWeb": true,
+   "usedKB": true,
+   "degraded": false,
+   "len": 63
+  }
+ ],
+ "imageUse": {
+  "宜川花椒": 1,
+  "延安大桥和宝塔山": 2,
+  "宝塔山·仰拍": 1,
+  "子长粉条": 1,
+  "宝塔山·日出": 3,
+  "延安小米": 1,
+  "黄龙核桃": 1,
+  "宝塔山": 1,
+  "黄龙蜂蜜": 1
+ },
+ "imageFiles": {
+  "ok": 9,
+  "bad": []
+ },
+ "latency": {
+  "wallP50": 3547,
+  "wallMax": 9630,
+  "llmP50": 2648,
+  "llmMax": 8940
+ },
+ "degraded": 0,
+ "pass": true
+}
