@@ -54,7 +54,7 @@ def _probe():
 SKIP_DIRS = {"__pycache__", ".git", "node_modules"}
 SKIP_FILES = {"data/config.json", "data/usage.jsonl", "docs/cf.log", "docs/_st.txt"}
 SKIP_PREFIX = (".dsh-office-",)
-BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".docx", ".xlsx", ".pptx", ".pdf", ".zip", ".ico"}
+BINARY_EXT = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".docx", ".xlsx", ".pptx", ".pdf", ".zip", ".ico"}
 
 
 def call(method, path, data=None, ok=(200, 201, 204)):
