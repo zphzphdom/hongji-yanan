@@ -112,6 +112,14 @@ def main():
         except Exception:
             img_bad.append(name)
 
+    # judge 已取消后台权限：接口必须 403，且仍能问答
+    s_jd, _ = req("/api/console/dashboard", token=judge.get("token"))
+    s_jask, jask = req("/api/ask", {"question": "宝塔山为什么是延安的象征", "mode": "fact"},
+                       token=judge.get("token"))
+    judge_ok = (s_jd == 403 and s_jask == 200 and bool(jask.get("ok"))
+                and "console" not in (judge.get("allow") or []))
+    print("[权限] judge 后台=%s 问答=%s allow=%s" % (s_jd, s_jask, judge.get("allow")))
+
     ok_status = all(r["status"] == 200 for r in rows)
     ok_img = all(r["image"] for r in rows)                     # 每答必有图
     ok_mode = all(r["mode"] in ("fact", "research", "moment") for r in rows)
@@ -132,6 +140,7 @@ def main():
             "三种模式": ok_mode,
             "回答非空": ok_len,
             "权限隔离": s_anon == 401 and s_bad == 401 and s_demo == 200 and s_judge == 200,
+            "judge 无后台权限": judge_ok,
             "后台可访问": all(v["ok"] for v in console.values()),
         },
         "latency": {
@@ -145,7 +154,7 @@ def main():
             s_anon == 401 and s_bad == 401 and s_demo == 200 and s_judge == 200
             and all(v["ok"] for v in console.values())
             and ok_status and ok_img and ok_mode and ok_len and not img_bad
-            and ok_current and ok_verdict
+            and ok_current and ok_verdict and judge_ok
         ),
     })
     print(json.dumps(out, ensure_ascii=False, indent=1))

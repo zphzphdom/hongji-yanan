@@ -107,7 +107,15 @@
       });
     }
     // 先图后文：图片能立刻给出讲的是哪个点，正文随后出
-    if (r.image) b.appendChild(imageBlock(r.image));
+    if (r.imageUrl || r.image) {
+      var pic = {
+        src: r.imageUrl || ((window.RED_IMAGES || {})[r.image] || {}).file,
+        alt: r.imageAlt || r.image || '',
+        credit: r.imageCredit || ('配图：' + (r.image || '')),
+        fallback: ((window.RED_IMAGES || {})[r.image] || {}).file
+      };
+      if (pic.src) b.appendChild(imageBlock(pic));
+    }
     b.appendChild(a);
 
     if (r.sources && r.sources.length) {
@@ -216,16 +224,24 @@
     $('#srcMask').classList.remove('hidden');
   }
 
-  /* ---------------- 配图 ---------------- */
-  function imageBlock(key) {
-    var meta = (window.RED_IMAGES || {})[key];
+  /* ---------------- 配图（本地图 / 联网图都用同一结构） ---------------- */
+  function imageSrc(meta) {
+    return meta.src || meta.file;
+  }
+
+  function imageBlock(meta) {
     var wrap = el('div', 'img-wrap');
-    if (!meta) return wrap;
+    if (!meta || !imageSrc(meta)) return wrap;
     var img = document.createElement('img');
     img.className = 'kb-img';
-    img.src = meta.file;
-    img.alt = meta.alt || key;
+    img.src = imageSrc(meta);
+    img.alt = meta.alt || '';
     img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.onerror = function () {
+      // 网络图挂了就退回本地占位，不留白
+      if (meta.fallback && img.src.indexOf(meta.fallback) < 0) img.src = meta.fallback;
+    };
     img.onclick = function () { openLightbox(meta); };
     wrap.appendChild(img);
     if (meta.credit) wrap.appendChild(el('div', 'img-credit', meta.credit));
@@ -237,8 +253,9 @@
     if (!box) return;
     box.innerHTML = '';
     var img = document.createElement('img');
-    img.src = meta.file;
+    img.src = imageSrc(meta);
     img.alt = meta.alt || '';
+    img.referrerPolicy = 'no-referrer';
     box.appendChild(img);
     box.appendChild(el('div', 'lb-credit', meta.credit || ''));
     box.classList.remove('hidden');
@@ -314,6 +331,17 @@
     lastAnswer = { r: r, q: question };
     drawCard(r, question);
     $('#cardMask').classList.remove('hidden');
+    // 卡片文案走服务端：每次联网现生成，并保证不与历史卡片重复
+    api('/api/card', { question: question, answer: r.text, mode: r.mode, image: r.image || '' })
+      .then(function (j) {
+        if (j && j.ok && j.lines && j.lines.length) {
+          r.cardLines = j.lines;
+          r.cardId = j.id;
+          r.cardSeen = j.seen;
+          lastAnswer.r = r;
+          drawCard(r, question);
+        }
+      }).catch(function () {});
   }
 
   function wrap(ctx, text, x, y, maxW, lh, maxLines) {
@@ -371,7 +399,14 @@
     g.fillStyle = '#3A2E29';
     g.font = '400 34px "PingFang SC","Microsoft YaHei",sans-serif';
     var body = r.text || r.raw || '';
-    y = wrap(g, body.replace(/\n/g, ' '), 80, y, 920, 54, 5) + 26;
+    var textLines = (r.cardLines && r.cardLines.length) ? r.cardLines : [body.replace(/\n/g, ' ')];
+    var used = 0;
+    for (var li = 0; li < textLines.length && used < 4; li++) {
+      var yBefore = y;
+      y = wrap(g, textLines[li], 80, y, 920, 54, Math.min(2, 4 - used));
+      used += Math.max(1, Math.round((y - yBefore) / 54));
+    }
+    y += 20;
 
     // 来源条
     if (r.sources && r.sources.length) {
@@ -386,6 +421,25 @@
       var doc = s.doc.length > 30 ? s.doc.slice(0, 29) + '…' : s.doc;
       g.fillText(doc + '　' + s.date, 88, y + 38);
       y += 96;
+    }
+
+    // 配图（放在二维码上方，回答有图才画）
+    var picTop = H - 80 - 250 - 40 - 300;
+    if (cardImg && cardImg.complete && cardImg.naturalWidth && y < picTop - 20) {
+      var pw = 560, ph = 300, px0 = W - 80 - pw;
+      g.save();
+      g.beginPath();
+      if (g.roundRect) { g.roundRect(px0, picTop, pw, ph, 14); } else { g.rect(px0, picTop, pw, ph); }
+      g.clip();
+      // 等比裁剪填充
+      var ir = cardImg.naturalWidth / cardImg.naturalHeight, br = pw / ph;
+      var sw, sh, sx, sy;
+      if (ir > br) { sh = cardImg.naturalHeight; sw = sh * br; sx = (cardImg.naturalWidth - sw) / 2; sy = 0; }
+      else { sw = cardImg.naturalWidth; sh = sw / br; sx = 0; sy = (cardImg.naturalHeight - sh) / 2; }
+      g.drawImage(cardImg, sx, sy, sw, sh, px0, picTop, pw, ph);
+      g.restore();
+      g.strokeStyle = '#E7DCD3'; g.lineWidth = 2;
+      g.strokeRect(px0, picTop, pw, ph);
     }
 
     // 二维码
@@ -425,6 +479,12 @@
   }
 
   function cardText(r, q) {
+    if (r.cardLines && r.cardLines.length) {
+      var tail = r.sources && r.sources[0]
+        ? '（来源：' + r.sources[0].id + ' ' + r.sources[0].org + '《' + r.sources[0].doc + '》' + r.sources[0].date + '）'
+        : '（联网实时生成，可扫码核对）';
+      return r.cardLines.join('') + tail;
+    }
     var s = r.sources && r.sources[0];
     var summary = firstSentence(r.text || r.raw, 52);
     return '我问了「' + q + '」，它告诉我：' + summary +
@@ -574,6 +634,10 @@
     $('#appView').classList.remove('hidden');
     $('#consoleWho').textContent = user.user + ' · ' + (user.label || user.role);
     $('#statusHint').textContent = '账号 ' + user.user + ' · DeepSeek 生成中…';
+    // 无后台权限的账号不显示后台入口（后端同样会拦 403）
+    var canConsole = (user.allow || []).indexOf('console') >= 0;
+    var btn = $('#consoleBtn');
+    if (btn) btn.classList.toggle('hidden', !canConsole);
   }
 
   function doLogin() {
@@ -594,6 +658,7 @@
         token = j.token;
         store.set('hy_token', token);
         store.set('hy_user', j.user);
+        store.set('hy_allow', (j.allow || ['chat']).join(','));
         $('#password').value = '';
         showApp(j);
       } else {
@@ -715,7 +780,7 @@
       return api('/api/console/dashboard');
     }).then(function (d) {
       if (d && !d.error) {
-        showApp({ user: store.get('hy_user') || 'user', label: '已登录', role: 'demo' });
+        showApp({ user: store.get('hy_user') || 'user', label: '已登录', role: 'demo', allow: (store.get('hy_allow') || 'chat').split(',') });
       } else {
         showLogin();
       }

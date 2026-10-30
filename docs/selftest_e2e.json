@@ -10,8 +10,7 @@
    "console"
   ],
   "judgeAllow": [
-   "chat",
-   "console"
+   "chat"
   ]
  },
  "console": {
@@ -33,102 +32,39 @@
    "q": "宜川花椒有什么特点？",
    "mode": "fact",
    "status": 200,
-   "wallMs": 2369,
-   "llmMs": 1850,
+   "wallMs": 1481,
+   "llmMs": 1076,
    "model": "deepseek-flash",
    "image": "宜川花椒",
-   "imageSource": "条目图片",
+   "imageSource": "网络图片",
    "current": true,
-   "verdict": "support",
+   "verdict": "unknown",
    "webCount": 3,
    "degraded": false,
-   "len": 112
+   "len": 91
   },
   {
    "q": "南泥湾大生产运动是怎么回事？",
    "mode": "research",
    "status": 200,
-   "wallMs": 4180,
-   "llmMs": 3734,
+   "wallMs": 3682,
+   "llmMs": 3188,
    "model": "deepseek-flash",
    "image": "延安大桥和宝塔山",
-   "imageSource": "默认图",
+   "imageSource": "网络图片",
    "current": true,
    "verdict": "support",
    "webCount": 3,
    "degraded": false,
-   "len": 188
-  },
-  {
-   "q": "宝塔山为什么是延安的象征？",
-   "mode": "moment",
-   "status": 200,
-   "wallMs": 2533,
-   "llmMs": 2072,
-   "model": "deepseek-flash",
-   "image": "宝塔山·仰拍",
-   "imageSource": "条目图片",
-   "current": true,
-   "verdict": "unknown",
-   "webCount": 3,
-   "degraded": false,
-   "len": 51
-  },
-  {
-   "q": "子长粉条怎么吃？",
-   "mode": "fact",
-   "status": 200,
-   "wallMs": 2096,
-   "llmMs": 1756,
-   "model": "deepseek-flash",
-   "image": "子长粉条",
-   "imageSource": "条目图片",
-   "current": true,
-   "verdict": "support",
-   "webCount": 3,
-   "degraded": false,
-   "len": 83
-  },
-  {
-   "q": "党的七大是什么时候开的？",
-   "mode": "research",
-   "status": 200,
-   "wallMs": 3612,
-   "llmMs": 3292,
-   "model": "deepseek-flash",
-   "image": "延安大桥和宝塔山",
-   "imageSource": "默认图",
-   "current": true,
-   "verdict": "support",
-   "webCount": 3,
-   "degraded": false,
-   "len": 165
-  },
-  {
-   "q": "壶口瀑布值得去吗？",
-   "mode": "moment",
-   "status": 200,
-   "wallMs": 2658,
-   "llmMs": 2357,
-   "model": "deepseek-flash",
-   "image": "宝塔山·日出",
-   "imageSource": "默认图",
-   "current": true,
-   "verdict": "support",
-   "webCount": 3,
-   "degraded": false,
-   "len": 52
+   "len": 186
   }
  ],
  "imageUse": {
   "宜川花椒": 1,
-  "延安大桥和宝塔山": 2,
-  "宝塔山·仰拍": 1,
-  "子长粉条": 1,
-  "宝塔山·日出": 1
+  "延安大桥和宝塔山": 1
  },
  "imageFiles": {
-  "ok": 5,
+  "ok": 2,
   "bad": []
  },
  "checks": {
@@ -138,13 +74,14 @@
   "三种模式": true,
   "回答非空": true,
   "权限隔离": true,
+  "judge 无后台权限": true,
   "后台可访问": true
  },
  "latency": {
-  "wallP50": 2595,
-  "wallMax": 4180,
-  "llmP50": 2214,
-  "llmMax": 3734
+  "wallP50": 2581,
+  "wallMax": 3682,
+  "llmP50": 2132,
+  "llmMax": 3188
  },
  "degraded": 0,
  "pass": true

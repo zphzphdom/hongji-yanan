@@ -77,7 +77,7 @@ ROLES = {
     "demo": {"password": "demo2026", "role": "demo", "admin": False,
              "label": "演示账号", "allow": ["chat", "console"]},
     "judge": {"password": "judge2026", "role": "judge", "admin": False,
-              "label": "评审账号", "allow": ["chat", "console"]},
+              "label": "评审账号", "allow": ["chat"]},
 }
 
 
@@ -475,6 +475,266 @@ def pick_image(query, mode, kb_hits):
     return FALLBACKS.get(mode, "宝塔山"), "默认图"
 
 
+# ---------------------------------------------------------------- 关键词抽取（联网取图用）
+
+KW_NOISE = set("什么 怎么 为什么 哪里 多少 哪些 请问 一下 介绍 讲讲 告诉 帮我 可以 是否 有没有 吗 呢 啊 吧".split())
+KW_ORDER = ["延安", "宝塔山", "杨家岭", "枣园", "王家岭", "王家坪", "凤凰山", "鲁艺", "清凉山", "南泥湾",
+            "壶口", "乾坤湾", "黄帝陵", "瓦窑堡", "洛川", "吴起", "安塞", "子长", "宜川", "延川", "黄龙",
+            "甘泉", "志丹", "黄陵", "富县", "延长", "延河", "纪念馆", "旧址", "大礼堂",
+            "花椒", "粉条", "苹果", "红枣", "核桃", "蜂蜜", "小米", "荞麦", "黄酒", "豆腐", "红薯", "杏仁", "梨"]
+
+
+def extract_keywords(query):
+    """从问题里抓关键词：先按已知实体表，再退回切词（过滤疑问词与虚词残片）。"""
+    q = str(query or "")
+    hits = [w for w in KW_ORDER if w in q]
+
+    # 把疑问句式和虚词当分隔符切开，剩下的片段才可能是实体
+    STOP_PHRASES = ("是什么", "有什么", "怎么样", "为什么", "在哪里", "是哪儿", "多少", "哪些", "怎么",
+                    "如何", "请问", "介绍一下", "值得", "好在哪里", "能去", "可以", "有没有")
+    for p in STOP_PHRASES:
+        q = q.replace(p, "|")
+    q = re.sub(r"[吗呢啊吧呀嘛了的和有与及或是在要去能会看听]|[？?，,。！!、：:；;（）()]", "|", q)
+
+    for seg in re.findall(r"[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,6}", q.replace("|", "|")):
+        pass  # 占位，下面用 split 处理分隔符
+
+    for seg in [x for x in re.split(r"\|+", q) if x]:
+        seg = seg.strip()
+        if not (2 <= len(seg) <= 6):
+            continue
+        if seg in KW_NOISE:
+            continue
+        if any(seg in h or h in seg for h in hits):
+            continue
+        hits.append(seg)
+        if len(hits) >= 4:
+            break
+    return hits[:4]
+
+
+# ---------------------------------------------------------------- 联网取图
+IMG_CACHE_PATH = os.path.join(DATA, "image_cache.json")
+IMG_OK = re.compile(r"\.(jpe?g|png|webp)(\?|$)", re.I)
+IMG_BAD_HOST = ("google.", "gstatic.", "facebook.", "twitter.", "instagram.", "tiktok.",
+                "zhimg.com", "pstatic.", "doubleclick.")
+
+
+def _img_cache():
+    return read_json(IMG_CACHE_PATH, {}) or {}
+
+
+def _img_cache_put(key, val):
+    with LOCK:
+        c = _img_cache()
+        c[key] = val
+        try:
+            write_json(IMG_CACHE_PATH, c)
+        except Exception:
+            pass
+
+
+def _url_alive(url, timeout=4):
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={
+            "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            ct = (r.headers.get("Content-Type") or "").lower()
+            return r.status == 200 and ct.startswith("image/")
+    except Exception:
+        return False
+
+
+def _site_name(w):
+    """检索结果里的站点名偶尔是转义的十六进制串，回落成域名。"""
+    name = (w.get("site") or "").strip()
+    if name and re.search(r"[\u4e00-\u9fa5A-Za-z]", name) and not re.fullmatch(r"[0-9a-f]{12,}", name):
+        return name
+    try:
+        return urllib.parse.urlparse(w.get("url") or "").netloc or "网络"
+    except Exception:
+        return "网络"
+
+
+def _page_first_image(page_url, timeout=6):
+    """从网页里取一张正文主图：优先 og:image，其次正文里第一张合格大图。"""
+    try:
+        req = urllib.request.Request(page_url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://www.baidu.com/"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            ctype = r.headers.get("Content-Type") or ""
+            if "html" not in ctype and "xml" not in ctype:
+                return None
+            html = r.read(400000).decode("utf-8", "ignore")
+    except Exception:
+        return None
+
+    cands = []
+    m = re.search(r'<meta[^>]+(?:property|name)=["\'](?:og:image|twitter:image)["\'][^>]*content=["\']([^"\']+)', html, re.I)
+    if m:
+        cands.append(m.group(1))
+    m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\'](?:og:image|twitter:image)["\']', html, re.I)
+    if m:
+        cands.append(m.group(1))
+    cands += re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html)[:40]
+
+    for c in cands:
+        if not c or c.startswith("data:"):
+            continue
+        if re.search(r"(logo|icon|avatar|qrcode|share|blank|spacer|ad_)", c, re.I):
+            continue
+        u = urllib.parse.urljoin(page_url, c)
+        if not IMG_OK.search(u.split("?")[0]):
+            continue
+        if any(h in u for h in IMG_BAD_HOST):
+            continue
+        if re.search(r"(yc|fanhui|nav|btn|arrow|close|more|top|next|prev)\d*\.(png|gif)$", u.split("?")[0], re.I):
+            continue
+        if _url_alive(u) and _img_big_enough(u):
+            return u
+    return None
+
+
+def _img_big_enough(url, timeout=8, min_w=400, min_h=260):
+    """只收真实照片：宽 >=400、高 >=260，且不是纯色占位图。"""
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            blob = r.read(1500000)
+        import io as _io
+        from PIL import Image
+        im = Image.open(_io.BytesIO(blob))
+        w, h = im.size
+        if w < min_w or h < min_h:
+            return False
+        ratio = w / max(1, h)
+        if ratio > 3.2 or ratio < 0.32:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def web_image(keywords, timeout=8):
+    """从网络取一张与关键词相关的图：先看检索结果有没有图片直链，再从相关网页抓主图。"""
+    if not keywords:
+        return None
+    key = "|".join(keywords[:2])
+    cache = _img_cache()
+    if key in cache:
+        return cache[key] or None
+
+    cfg = llm_config()
+    found = None
+    if cfg["key"] and cfg["search_on"]:
+        results = []
+        for q in (" ".join(keywords), " ".join(keywords) + " 图片"):
+            try:
+                results += ds_search(cfg, q, timeout=timeout)
+            except Exception:
+                pass
+
+        for w in results:
+            u = w.get("url") or ""
+            if IMG_OK.search(u) and not any(h in u for h in IMG_BAD_HOST) and _url_alive(u):
+                found = {"url": u, "credit": "图源：" + _site_name(w),
+                         "alt": " ".join(keywords)}
+                break
+
+        if not found:
+            GOOD = ("gov.cn", "xinhuanet", "people.com.cn", "cnwest.com", "hsw.cn", "gmw.cn", "cnr.cn")
+            ranked = sorted(results, key=lambda w: 0 if any(d in (w.get("url") or "") for d in GOOD) else 1)
+            for w in ranked[:4]:
+                u = _page_first_image(w.get("url") or "")
+                if u:
+                    found = {"url": u, "credit": "图源：" + _site_name(w),
+                             "alt": " ".join(keywords)}
+                    break
+    _img_cache_put(key, found)
+    return found
+
+
+# ---------------------------------------------------------------- 问答卡文案：联网生成 + 去重
+CARD_STORE = os.path.join(DATA, "cards.json")
+CARD_STYLE = [
+    "用第一人称写两行，像在朋友圈记录当天的一个发现",
+    "以一句现场感的话开头（刚走出展馆/刚爬上坡），再补一句可核对的结论",
+    "用一个反常识的发现开头，让人想继续问下去",
+    "以时间或地点切入，把答案落到一个具体场景",
+    "以一个可以照着做的动作开头（抬头看、伸手摸），再接结论",
+    "用一句疑问句开头，紧接答案，形成自问自答",
+    "把答案压成一句短句 + 一句克制的感受",
+    "用对比句开头：来之前以为……，其实……",
+]
+
+
+def _cards():
+    return read_json(CARD_STORE, {"seen": [], "items": []}) or {"seen": [], "items": []}
+
+
+def _gen_lines(cfg, prompt, timeout=20):
+    payload = {"model": cfg["model"], "messages": [{"role": "user", "content": prompt}],
+               "temperature": 0.95, "max_tokens": 1400, "stream": False}
+    req = urllib.request.Request(cfg["chat"], data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": "Bearer " + cfg["key"]}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    raw = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+    raw = re.sub(r"[*#`]", "", raw).strip()
+    return [ln.strip(" -·。")[:24] for ln in raw.splitlines() if ln.strip()][:2]
+
+
+def card_copy(question, answer, mode, image_key):
+    """生成问答卡文案：每次联网现写，并避开已经用过的开头（保证每张不同）。"""
+    cfg = llm_config()
+    store = _cards()
+    items = store.get("items", [])
+    used_openers = [x.get("opener", "") for x in items][-20:]
+    style = CARD_STYLE[len(items) % len(CARD_STYLE)]
+
+    base = ("写两行分享文案（每行≤22字），不要解释、不要思考过程，直接输出两行正文。\n"
+            "问：%s\n答：%s\n风格：%s\n避免与这些开头重复：%s\n只用答案里已有的事实。") % (
+        question, answer[:160], style, "；".join(x for x in used_openers if x) or "无")
+
+    lines = []
+    if cfg["key"]:
+        try:
+            lines = _gen_lines(cfg, base)
+        except Exception:
+            lines = []
+    if not lines:
+        lines = [question[:20], (answer or "")[:20]]
+    opener = lines[0][:8]
+
+    seen = set(store.get("seen", []))
+    sig = "|".join(lines)
+    if sig in seen or opener in used_openers:
+        try:
+            lines = _gen_lines(cfg, base + "\n5. 上一版被判重复，请换一个完全不同的开头和句式。", timeout=18) or lines
+            opener = lines[0][:8]
+        except Exception:
+            pass
+
+    cid = hashlib.sha1((sig + str(time.time())).encode()).hexdigest()[:10]
+    with LOCK:
+        st = _cards()
+        st.setdefault("seen", []).append("|".join(lines))
+        st.setdefault("items", []).append({
+            "id": cid, "t": time.strftime("%Y-%m-%d %H:%M:%S"), "q": question[:80],
+            "lines": lines, "opener": opener, "image": image_key, "mode": mode,
+        })
+        st["seen"] = st["seen"][-500:]
+        st["items"] = st["items"][-200:]
+        try:
+            write_json(CARD_STORE, st)
+        except Exception:
+            pass
+    return {"id": cid, "lines": lines, "unique": sig not in seen and opener not in used_openers}
+
+
 # ---------------------------------------------------------------- 回答编排
 
 
@@ -504,8 +764,18 @@ def answer(query, mode, trace=False):
     # 核查：库内条目是否支持 / 冲突 / 查无
     verdict = verify_against_kb(text["text"], kb_hits)
 
-    # 配图去重：整个回答只出一张
+    # 关键词 → 先抓网络图；抓不到再退回本地图（整个回答只出一张）
+    keywords = extract_keywords(query)
     img, img_src = pick_image(query, mode, kb_hits)
+    web_img = None
+    try:
+        box_web = {}
+        th = threading.Thread(target=lambda: box_web.update(v=web_image(keywords)))
+        th.start()
+        th.join(timeout=6)
+        web_img = box_web.get("v")
+    except Exception:
+        web_img = None
 
     srcs = []
     if verdict["level"] == "support":
@@ -526,7 +796,11 @@ def answer(query, mode, trace=False):
         "sources": srcs,
         "web": web,
         "image": img,
-        "imageSource": img_src,
+        "imageUrl": (web_img or {}).get("url"),
+        "imageCredit": (web_img or {}).get("credit"),
+        "imageAlt": (web_img or {}).get("alt") or img,
+        "imageSource": "网络图片" if web_img else img_src,
+        "keywords": keywords,
         "model": text.get("model"),
         "llmMs": llm_ms,
         "usedWeb": bool(web_hits),
@@ -534,14 +808,19 @@ def answer(query, mode, trace=False):
         "error": err,
         "ms": int((time.time() - t0) * 1000),
         "kbVersion": kb.get("version"),
-    } if trace else _public({
+    } if trace else {
         "ok": True, "mode": mode, "text": text["text"], "current": bool(web_hits),
         "verdict": verdict, "kb": [{"id": h.get("id"), "q": h.get("q")} for h in kb_hits],
-        "sources": srcs, "web": web, "image": img, "imageSource": img_src,
+        "sources": srcs, "web": web, "image": img,
+        "imageUrl": (web_img or {}).get("url"),
+        "imageCredit": (web_img or {}).get("credit"),
+        "imageAlt": (web_img or {}).get("alt") or img,
+        "imageSource": "网络图片" if web_img else img_src,
+        "keywords": keywords,
         "model": text.get("model"), "llmMs": llm_ms, "usedWeb": bool(web_hits),
         "degraded": text.get("model") is None, "ms": int((time.time() - t0) * 1000),
         "kbVersion": kb.get("version"),
-    })
+    }
 
 
 def _public(obj):
@@ -764,13 +1043,31 @@ class Handler(SimpleHTTPRequestHandler):
             append_log({
                 "q": q, "mode": mode, "user": (u or {}).get("user", "anonymous"),
                 "kb": [h["id"] for h in res.get("kb", [])][:2],
-                "refused": not res.get("usedKB") and not res.get("usedWeb"),
+                "refused": not res.get("current"),
                 "web": res.get("usedWeb"), "image": res.get("image"),
+                "imageUrl": res.get("imageUrl"),
+                "kw": res.get("keywords"),
                 "model": res.get("model"), "llmMs": res.get("llmMs"),
                 "ms": res.get("ms"), "degraded": res.get("degraded"),
                 "ip": self.client_address[0],
             })
             return self._json(res)
+
+        if path == "/api/card":
+            q = str(body.get("question") or "").strip()[:300]
+            a = str(body.get("answer") or "").strip()[:1200]
+            if not q:
+                return self._json({"ok": False, "error": "empty"}, 400)
+            u = whoami(self)
+            try:
+                card = card_copy(q, a, str(body.get("mode") or "fact"), str(body.get("image") or ""))
+            except Exception as e:
+                card = {"id": "", "lines": [q[:20], a[:20]], "unique": False,
+                        "error": type(e).__name__}
+            append_log({"event": "card", "q": q[:80], "user": (u or {}).get("user", "anonymous"),
+                        "lines": card.get("lines"), "unique": card.get("unique"),
+                        "ip": self.client_address[0]})
+            return self._json({"ok": True, **card})
 
         if path == "/api/log":
             append_log({

@@ -18,8 +18,7 @@
    "admin": false,
    "label": "评审账号",
    "allow": [
-    "chat",
-    "console"
+    "chat"
    ]
   },
   "admin": {
