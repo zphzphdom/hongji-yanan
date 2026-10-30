@@ -206,6 +206,15 @@
 
   function renderTask(task) {
     state.task = task;
+    // 渲染任何一处出错，都不能让下面的按钮失去绑定（这是线上踩过的坑）
+    try { renderTaskInner(task); } catch (e) {
+      if (window.console && console.error) console.error('renderTask', e);
+      toast('页面渲染异常，已降级显示');
+      show('stepTask');
+    }
+  }
+
+  function renderTaskInner(task) {
     $('#taskKind').textContent = task.kind;
     $('#taskHint').textContent = task.mode === 'party'
       ? '电子讲解 + 判断题' : '可交选择题 / 文本 / 图片';
@@ -262,7 +271,9 @@
       box2.appendChild(opts2);
       qc.appendChild(box2);
     }
-    $('#textAreaBox').classList.toggle('hidden', task.allow.indexOf('text') < 0);
+    // 党员分支没有 allow 字段：用容错写法，避免整段渲染被异常打断
+    var allow = task.allow || (task.mode === 'party' ? [] : ['choice']);
+    $('#textAreaBox').classList.toggle('hidden', allow.indexOf('text') < 0);
     $('#taskErr').textContent = '';
     show('stepTask');
   }
