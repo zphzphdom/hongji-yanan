@@ -295,7 +295,10 @@ SYSTEM = (
     "3. 检索结果相互矛盾时，选官方来源（政府网站、官媒）；仍无法判断就说明「这一点需要查证」。\n"
     "4. 一句话里最多出现 2 个数字；不要罗列数据清单。\n"
     "5. 简体中文，不用 Markdown 符号，不写「作为AI」「以上回答」这类话。\n"
-    "6. 只输出正文，不要输出来源行（来源由系统附加）。"
+    "6. 只输出正文，不要输出来源行（来源由系统附加）。\n"
+    "7. 只要内容与延安时期的人、事、旧址、精神相关，就用一句话把这段内容与「延安精神」四条中的一条自然联系起来"
+    "（坚定正确的政治方向／解放思想、实事求是／全心全意为人民服务／自力更生、艰苦奋斗）。"
+    "不要生硬贴标签，不要每次罗列四条；与延安无关的问题（如天气、交通）不必强行关联。"
 )
 
 MODE_HINTS = {
@@ -774,6 +777,11 @@ def answer(query, mode, trace=False):
         th.start()
         th.join(timeout=6)
         web_img = box_web.get("v")
+        # 抓不到就换一个更短的关键词再试一次（网络图必须尽量有）
+        if not web_img and keywords:
+            th2 = threading.Thread(target=lambda: box_web.update(v2=web_image(keywords[:1], timeout=6)))
+            th2.start(); th2.join(timeout=7)
+            web_img = box_web.get("v2")
     except Exception:
         web_img = None
 

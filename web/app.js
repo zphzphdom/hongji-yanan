@@ -109,7 +109,7 @@
     // 先图后文：图片能立刻给出讲的是哪个点，正文随后出
     if (r.imageUrl || r.image) {
       var pic = {
-        src: r.imageUrl || ((window.RED_IMAGES || {})[r.image] || {}).file,
+        src: ((window.RED_IMAGES || {})[r.image] || {}).file || r.imageUrl,
         alt: r.imageAlt || r.image || '',
         credit: r.imageCredit || ('配图：' + (r.image || '')),
         fallback: ((window.RED_IMAGES || {})[r.image] || {}).file
@@ -127,6 +127,18 @@
       });
       b.appendChild(row);
     }
+    // 网络补图（与本地图并列展示，标注来源）
+    if (r.imageUrl) {
+      var wImg = imageBlock({
+        src: r.imageUrl, alt: r.imageAlt || '', credit: r.imageCredit || '图源：网络',
+        fallback: ((window.RED_IMAGES || {})[r.image] || {}).file
+      });
+      if (wImg.firstChild) {
+        wImg.classList.add('img-web');
+        b.appendChild(wImg);
+      }
+    }
+
     if (r.web && r.web.length) {
       var wr = el('div', 'web-row');
       r.web.slice(0, 2).forEach(function (w) {
@@ -252,13 +264,44 @@
     var box = $('#lightbox');
     if (!box) return;
     box.innerHTML = '';
+
+    var closeBtn = el('button', 'lb-close', '✕ 关闭');
+    closeBtn.setAttribute('aria-label', '关闭大图');
+    closeBtn.onclick = function (e) { e.stopPropagation(); closeLightbox(); };
+    box.appendChild(closeBtn);
+
     var img = document.createElement('img');
     img.src = imageSrc(meta);
     img.alt = meta.alt || '';
     img.referrerPolicy = 'no-referrer';
+    img.onerror = function () {
+      box.innerHTML = '';
+      box.appendChild(closeBtn);
+      box.appendChild(el('div', 'lb-credit', '图片加载失败，可能已被源站删除。'));
+    };
     box.appendChild(img);
     box.appendChild(el('div', 'lb-credit', meta.credit || ''));
+    box.appendChild(el('div', 'lb-tip', '点击图片、空白处或右上角关闭'));
+
+    // 点空白处 / 点图片都能关
+    box.onclick = function (e) {
+      if (e.target === box || e.target.tagName === 'IMG') closeLightbox();
+    };
     box.classList.remove('hidden');
+    document.addEventListener('keydown', escClose);
+  }
+
+  function closeLightbox() {
+    var box = $('#lightbox');
+    if (!box) return;
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    box.onclick = null;
+    document.removeEventListener('keydown', escClose);
+  }
+
+  function escClose(e) {
+    if (e.key === 'Escape') closeLightbox();
   }
 
   function esc(s) {
