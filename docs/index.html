@@ -9,28 +9,8 @@
 </head>
 <body>
 
-<!-- 登录 -->
-<div class="login" id="loginView">
-  <div class="login-card">
-    <div class="login-hero">
-      <div class="brand-name big">红迹·延安</div>
-      <div class="brand-sub">AI 讲解员 · 延小讲</div>
-      <p class="login-pitch">在延安，问一句有出处的话。<br>三种问法全部由 DeepSeek 结合知识库与联网检索生成，每条回答都附来源与图片。</p>
-    </div>
-    <div class="login-form">
-      <label>账号</label>
-      <input id="username" autocomplete="username" placeholder="请输入账号">
-      <label>密码</label>
-      <input id="password" type="password" autocomplete="current-password" placeholder="请输入密码">
-      <button class="btn-primary" id="loginBtn">进入</button>
-      <div class="err" id="loginErr"></div>
-      <div class="login-hint">登录后可查看看板、知识库与提问日志。日志只记录问句、模式与响应时延，不含个人信息。</div>
-    </div>
-  </div>
-</div>
-
 <!-- 应用 -->
-<div class="app hidden" id="appView">
+<div class="app" id="appView">
   <header class="top">
     <div class="top-row">
       <div class="brand">
@@ -38,8 +18,7 @@
         <span class="brand-sub">AI 讲解员 · 延小讲</span>
       </div>
       <div class="top-actions">
-        <button class="ghost-btn" id="consoleBtn">后台</button>
-        <button class="icon-btn" id="logoutBtn" aria-label="退出">⎋</button>
+        <a class="ghost-btn" href="/learn.html">点位学习</a>
       </div>
     </div>
     <div class="meta" id="kbMeta">知识库载入中…</div>
@@ -64,6 +43,7 @@
       <button class="send" id="sendBtn">发送</button>
     </div>
     <div class="hint" id="statusHint">DeepSeek 生成中…</div>
+    <div class="hint" id="secretDot" title="">红迹·延安 · 1935—1948</div>
   </footer>
 </div>
 

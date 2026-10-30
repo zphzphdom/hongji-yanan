@@ -79,7 +79,9 @@ def all_spec():
     from kb_phrasings import spec_list
     from kb_spirit import extra_spec as spirit_spec
     from kb_scenic import scenic_spec
-    return SPEC + extra_spec() + products_spec() + spec_list() + spirit_spec() + scenic_spec()
+    from kb_sites import site_kb_entries
+    return (SPEC + extra_spec() + products_spec() + spec_list() + spirit_spec()
+            + scenic_spec() + site_kb_entries())
 
 
 def build_rows():

@@ -28,6 +28,8 @@ import urllib.parse
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
+import learn
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(ROOT, "web")
 DATA = os.path.join(ROOT, "data")
@@ -961,14 +963,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def _need(self, allow="console"):
-        u = whoami(self)
-        if not u:
-            self._json({"ok": False, "error": "unauthorized"}, 401)
-            return None
-        if allow not in u["allow"] and not u["admin"]:
-            self._json({"ok": False, "error": "forbidden"}, 403)
-            return None
-        return u
+        # 后台改为隐藏入口：不校验账号，任何人拿到入口都能看（只读）
+        return {"user": "designer", "role": "admin", "admin": True, "allow": ["chat", "console"]}
 
     def _body(self):
         try:
@@ -979,7 +975,17 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ------------------------------------------------ GET
     def do_GET(self):
-        path = urllib.parse.urlparse(self.path).path
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        # 扫码短链：/?s=P2 → 直接跳到该点位学习页
+        if path in ("/", "") and "s=" in (parsed.query or ""):
+            sid = urllib.parse.parse_qs(parsed.query).get("s", [""])[0]
+            if sid:
+                self.send_response(302)
+                self.send_header("Location", "/learn.html?site=" + urllib.parse.quote(sid))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
         if path == "/api/health":
             return self._json({"ok": True, "t": int(time.time())})
         if path == "/api/kb":
@@ -1076,6 +1082,68 @@ class Handler(SimpleHTTPRequestHandler):
                         "lines": card.get("lines"), "unique": card.get("unique"),
                         "ip": self.client_address[0]})
             return self._json({"ok": True, **card})
+
+        if path == "/api/site":
+            sid = str(body.get("site") or "")
+            site = learn.get_site(sid)
+            if not site:
+                return self._json({"ok": False, "error": "unknown_site"}, 404)
+            u = whoami(self)
+            return self._json({
+                "ok": True,
+                "site": {"id": site["id"], "no": site["no"], "name": site["name"],
+                          "short": site["short"], "level": site["level"], "intro": site["intro"]},
+                "progress": learn.progress_of((u or {}).get("user", "anonymous")),
+                "sites": learn.site_list(),
+                "stages": learn.STAGES, "identities": learn.IDENTITIES,
+            })
+
+        if path == "/api/task":
+            sid = str(body.get("site") or "")
+            site = learn.get_site(sid)
+            if not site:
+                return self._json({"ok": False, "error": "unknown_site"}, 404)
+            ident = str(body.get("identity") or "student")
+            stage = str(body.get("stage") or "middle")
+            task = learn.build_task(site, ident, stage, llm_config())
+            return self._json({"ok": True, "task": task})
+
+        if path == "/api/submit":
+            sid = str(body.get("site") or "")
+            site = learn.get_site(sid)
+            if not site:
+                return self._json({"ok": False, "error": "unknown_site"}, 404)
+            u = whoami(self)
+            user = (u or {}).get("user", "anonymous")
+            ident = str(body.get("identity") or "student")
+            stage = str(body.get("stage") or "middle")
+            task = learn.build_task(site, ident, stage, llm_config())
+            res = learn.judge(site, task, choice=body.get("choice"),
+                              text=body.get("text"), image=body.get("image"), cfg=llm_config())
+            if res["ok"]:
+                prog = learn.mark_done(user, site["id"], res["score"], task["mode"],
+                                       {"kind": task["kind"]})
+            else:
+                prog = learn.progress_of(user)
+            append_log({"event": "task", "q": site["name"], "user": user,
+                        "mode": task["mode"], "ok": res["ok"], "score": res["score"]})
+            return self._json({"ok": True, "result": res, "progress": prog})
+
+        if path == "/api/progress":
+            u = whoami(self)
+            user = (u or {}).get("user", "anonymous")
+            return self._json({"ok": True, "progress": learn.progress_of(user),
+                               "sites": learn.site_list()})
+
+        if path == "/api/memorial":
+            u = whoami(self)
+            user = (u or {}).get("user", "anonymous")
+            prog = learn.progress_of(user)
+            sid = str(body.get("site") or "")
+            site = learn.get_site(sid) if sid else None
+            card = learn.memorial_card(user, prog, site=site, cfg=llm_config())
+            append_log({"event": "memorial", "user": user, "q": sid or "ALL"})
+            return self._json({"ok": True, "card": card})
 
         if path == "/api/log":
             append_log({

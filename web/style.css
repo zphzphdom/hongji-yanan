@@ -223,3 +223,59 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .lb-close:active{transform:scale(.96)}
 .lb-tip{color:#8E827B;font-size:11.5px;margin-top:8px}
 @media (max-width:480px){.lb-close{font-size:14px;padding:9px 15px}}
+
+/* ---------- 点位学习 ---------- */
+.learn-wrap{max-width:760px;margin:0 auto;min-height:100vh;background:var(--cream);display:flex;flex-direction:column}
+.learn-top{padding-bottom:12px}
+.progress-line{display:flex;align-items:center;gap:10px;margin-top:12px;padding-bottom:10px}
+.progress-bar{flex:1;height:8px;background:rgba(255,255,255,.22);border-radius:6px;overflow:hidden}
+.progress-bar i{display:block;height:100%;background:linear-gradient(90deg,#F3D9B8,#B0863A);transition:width .35s}
+.progress-txt{font-size:12px;color:#F3D9B8;min-width:42px;text-align:right}
+.learn-body{flex:1;padding:20px 18px calc(40px + env(safe-area-inset-bottom))}
+.step-title{font-family:var(--serif);font-size:21px;color:var(--red);margin:0 0 8px}
+.step-sub{font-size:13px;color:var(--grey);margin:0 0 16px;line-height:1.7}
+.site-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.site-chip{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+  background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;
+  font-family:var(--sans);text-align:left;transition:.15s}
+.site-chip:hover{border-color:var(--gold);transform:translateY(-1px)}
+.site-chip.done{background:#F4FAF6;border-color:#B7D9C4}
+.chip-no{font-size:11px;color:var(--gold);letter-spacing:.1em}
+.chip-name{font-size:15px;color:var(--ink);font-weight:600;line-height:1.4}
+.chip-ok{position:absolute;right:12px;top:12px;color:#2E7D4F;font-weight:700}
+.site-head{display:flex;gap:14px;align-items:center;margin-bottom:12px}
+.site-no{font-family:var(--serif);font-size:34px;color:var(--gold);font-weight:700}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;line-height:1.8;font-size:14.5px;color:#3A2E29}
+.intro-card{margin-bottom:12px}
+.kv{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.kv div{font-size:13px;color:var(--grey);background:#F7F3EE;border-radius:8px;padding:8px 12px}
+.kv b{color:var(--red)}
+.btn-primary{width:100%;border:none;background:var(--red);color:#fff;border-radius:12px;padding:14px;
+  font-size:15px;font-family:var(--sans);cursor:pointer;margin-top:8px}
+.btn.ghost{width:100%;border:1px solid var(--line);background:transparent;color:var(--grey);
+  border-radius:12px;padding:13px;font-size:14px;font-family:var(--sans);cursor:pointer;margin-top:8px}
+.opt-label{font-size:12px;color:var(--grey);margin:14px 0 8px;letter-spacing:.06em}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{border:1px solid var(--line);background:#fff;border-radius:20px;padding:9px 18px;
+  font-size:14px;font-family:var(--sans);color:#4A3A34;cursor:pointer}
+.opt.on{background:var(--red);color:#fff;border-color:var(--red)}
+.task-head{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.script-card{background:#FFFBF4;border-left:4px solid var(--gold);margin-bottom:12px;font-size:14px}
+.q-block{margin-bottom:14px}
+.q-title{font-size:14.5px;color:var(--ink);margin-bottom:10px;font-weight:600;line-height:1.6}
+.q-opts{display:flex;flex-direction:column;gap:8px}
+.q-opt{text-align:left;border:1px solid var(--line);background:#fff;border-radius:10px;
+  padding:12px 14px;font-size:14px;font-family:var(--sans);cursor:pointer;color:#3A2E29}
+.q-opt.on{border-color:var(--red);background:#FBF1EF;color:var(--red);font-weight:600}
+#textAreaBox textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;
+  padding:12px;font-size:14px;font-family:var(--sans);resize:vertical;margin-bottom:10px}
+.upload{display:inline-block;font-size:13px;color:var(--red);cursor:pointer;margin-bottom:6px}
+.upload input{display:none}
+.finish-mark{width:84px;height:84px;border-radius:50%;background:#2E7D4F;color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:42px;margin:20px auto 18px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin:16px 0}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+.stat-v{font-size:26px;font-weight:700;color:var(--red);font-family:var(--serif)}
+.stat-l{font-size:12px;color:var(--grey);margin-top:4px}
+#fbBody{white-space:pre-wrap}
+.hidden{display:none !important}

@@ -261,20 +261,17 @@ def _is_function(ver, size):
         if 0 <= r < size and 0 <= c < size:
             f[r][c] = True
 
-    # 三个定位图形：7×7 本体 + 外侧一圈分隔符
-    # 左上角分别在 (0,0)、(0,size-7)、(size-7,0)；本体 r0..r0+6，分隔符只在本体外侧
+    # 三个定位图形：7×7 本体（深色外框+白色内框+深色核心）+ 外侧一圈分隔符
+    #   左上角坐标分别为 (0,0)、(0,size-7)、(size-7,0)
     for r0, c0 in ((0, 0), (0, size - 7), (size - 7, 0)):
         for dr in range(-1, 8):
             for dc in range(-1, 8):
                 rr, cc = r0 + dr, c0 + dc
-                # 只允许本体（0..6）与贴边的分隔符（-1 或 7），不允许越过 7 再往内
-                if dr == 7 and dc == 7:
-                    continue
                 if not (0 <= rr < size and 0 <= cc < size):
                     continue
-                # 越过本体且不贴边 → 属于数据区
-                if dr > 6 and dc < 7 and rr < r0 + 7 + 1:
-                    pass
+                # 只保留本体范围（0..6）与外圈（-1 或 7）
+                if dr > 6 and dc > 6:
+                    continue
                 mark(rr, cc)
 
     # 时序图形：第 6 行与第 6 列
@@ -303,6 +300,7 @@ def _is_function(ver, size):
         mark(8, size - 1 - i)
     for i in range(7):
         mark(size - 1 - i, 8)
+    # 固定深色模块位于 (size-8, 8)，本身也属功能图形
     mark(size - 8, 8)
 
     return f

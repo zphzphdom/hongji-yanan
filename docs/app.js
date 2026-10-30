@@ -641,81 +641,21 @@
   var token = store.get('hy_token') || '';
   var me = null;
 
-  function api(path, body, opts) {
-    opts = opts || {};
+  function api(path, body) {
     var opt = { headers: { 'Content-Type': 'application/json' } };
-    if (token) opt.headers.Authorization = 'Bearer ' + token;
     if (body) { opt.method = 'POST'; opt.body = JSON.stringify(body); }
     else opt.method = 'GET';
     return fetch(path, opt).then(function (r) {
-      // 登录接口的 401 是"账号密码错"，要原样交回给登录框；其余 401 才说明会话过期
-      if (r.status === 401 && !opts.raw401) { showLogin(); throw new Error('unauthorized'); }
-      return r.json().catch(function () { return { ok: false, error: '服务返回异常（HTTP ' + r.status + '）' }; });
+      return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; });
     });
   }
 
-  function showLogin(msg) {
-    token = '';
-    store.del('hy_token');
-    $('#appView').classList.add('hidden');
-    $('#consoleView').classList.add('hidden');
-    $('#loginView').classList.remove('hidden');
-    if (msg) setLoginError(msg);
-  }
-
-  function setLoginError(msg) {
-    var box = $('#loginErr');
-    if (!box) return;
-    box.textContent = msg || '';
-    box.classList.toggle('show', !!msg);
-  }
-
-  function showApp(user) {
-    me = user;
-    $('#loginView').classList.add('hidden');
+  function enterApp() {
     $('#consoleView').classList.add('hidden');
     $('#appView').classList.remove('hidden');
-    $('#consoleWho').textContent = user.user + ' · ' + (user.label || user.role);
-    $('#statusHint').textContent = '账号 ' + user.user + ' · DeepSeek 生成中…';
-    // 无后台权限的账号不显示后台入口（后端同样会拦 403）
-    var canConsole = (user.allow || []).indexOf('console') >= 0;
+    var allowConsole = true;
     var btn = $('#consoleBtn');
-    if (btn) btn.classList.toggle('hidden', !canConsole);
-  }
-
-  function doLogin() {
-    var u = $('#username').value.trim();
-    var p = $('#password').value;
-    setLoginError('');
-    if (!u || !p) {
-      setLoginError(!u ? '请输入账号' : '请输入密码');
-      (!u ? $('#username') : $('#password')).focus();
-      return;
-    }
-    $('#loginBtn').disabled = true;
-    $('#loginBtn').textContent = '登录中…';
-    api('/api/login', { username: u, password: p }, { raw401: true }).then(function (j) {
-      $('#loginBtn').disabled = false;
-      $('#loginBtn').textContent = '进入';
-      if (j && j.ok) {
-        token = j.token;
-        store.set('hy_token', token);
-        store.set('hy_user', j.user);
-        store.set('hy_allow', (j.allow || ['chat']).join(','));
-        $('#password').value = '';
-        showApp(j);
-      } else {
-        setLoginError((j && j.error) || '登录失败，请重试');
-        $('#password').value = '';
-        $('#password').focus();
-        $('#password').classList.add('shake');
-        setTimeout(function () { $('#password').classList.remove('shake'); }, 420);
-      }
-    }).catch(function () {
-      $('#loginBtn').disabled = false;
-      $('#loginBtn').textContent = '进入';
-      setLoginError('无法连接服务器，请检查网络后重试');
-    });
+    if (btn) btn.classList.toggle('hidden', !allowConsole);
   }
 
   function openConsole() {
@@ -816,34 +756,33 @@
 
   function initAuth() {
     bindAuth();
-    if (!token) { showLogin(); return; }
-    if (location.hostname.endsWith('github.io')) { staticFallback(); showLogin(); return; }
-    api('/api/capabilities').then(function () {
-      // 用一次需要登录的接口验证 token
-      return api('/api/console/dashboard');
-    }).then(function (d) {
-      if (d && !d.error) {
-        showApp({ user: store.get('hy_user') || 'user', label: '已登录', role: 'demo', allow: (store.get('hy_allow') || 'chat').split(',') });
-      } else {
-        showLogin();
-      }
-    }).catch(function () { staticFallback(); showLogin(); });
+    enterApp();
+    if ($('#consoleWho')) $('#consoleWho').textContent = '设计者视图';
+    if ($('#statusHint')) $('#statusHint').textContent = 'DeepSeek 联网生成中…';
   }
 
   function bindAuth() {
-    $('#loginBtn').onclick = doLogin;
-    $('#password').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
-    $('#username').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
-    $('#logoutBtn').onclick = function () {
-      api('/api/logout', {}).catch(function () {});
-      showLogin();
-    };
-    $('#consoleBtn').onclick = openConsole;
-    $('#backBtn').onclick = function () {
+    // 隐藏入口：连点页脚文字 5 次，或地址栏加 #admin
+    var taps = 0, timer = null;
+    var dot = $('#secretDot');
+    if (dot) {
+      dot.onclick = function () {
+        taps++;
+        clearTimeout(timer);
+        timer = setTimeout(function () { taps = 0; }, 1600);
+        if (taps >= 5) { taps = 0; openConsole(); }
+      };
+    }
+    if (location.hash === '#admin') openConsole();
+    var back = $('#backBtn');
+    if (back) back.onclick = function () {
       $('#consoleView').classList.add('hidden');
       $('#appView').classList.remove('hidden');
     };
-    $('#consoleTabs').addEventListener('click', function (e) {
+    var cb = $('#consoleBtn');
+    if (cb) cb.onclick = openConsole;
+    var tabs = $('#consoleTabs');
+    if (tabs) tabs.addEventListener('click', function (e) {
       var b = e.target.closest('.mode');
       if (b) loadTab(b.dataset.tab);
     });

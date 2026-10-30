@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C1F28">
+<title>红迹·延安 · 点位学习</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="learn-wrap" id="learnWrap">
+  <header class="top learn-top">
+    <div class="top-row">
+      <div class="brand">
+        <span class="brand-name">红迹·延安</span>
+        <span class="brand-sub" id="siteName">点位学习</span>
+      </div>
+      <a class="ghost-btn" href="/" id="backChat">去问答</a>
+    </div>
+    <div class="progress-line">
+      <div class="progress-bar"><i id="progFill" style="width:0%"></i></div>
+      <span class="progress-txt" id="progTxt">0/6</span>
+    </div>
+  </header>
+
+  <main class="learn-body">
+    <!-- 点位选择 -->
+    <section id="stepPick" class="step">
+      <h2 class="step-title">选择一个展览点位</h2>
+      <p class="step-sub">现场扫点位二维码会直接进入对应点位；也可以在这里手动选择。</p>
+      <div class="site-grid" id="siteGrid"></div>
+    </section>
+
+    <!-- 讲解 -->
+    <section id="stepIntro" class="step hidden">
+      <div class="site-head"><span class="site-no" id="introNo">01</span>
+        <div><h2 class="step-title" id="introName"></h2><div class="muted" id="introLevel"></div></div></div>
+      <div class="card intro-card" id="introText"></div>
+      <div class="kv" id="introFacts"></div>
+      <button class="btn-primary" id="toIdentity">开始学习</button>
+    </section>
+
+    <!-- 身份与学段 -->
+    <section id="stepIdentity" class="step hidden">
+      <h2 class="step-title">你是哪位参观者？</h2>
+      <p class="step-sub">这会决定给你的任务类型：学生按学段发任务，党员直接进入电子讲解与判断题。</p>
+      <div class="opt-label">身份</div>
+      <div class="opts" id="identOpts"></div>
+      <div class="opt-label" id="stageLabel">学段</div>
+      <div class="opts" id="stageOpts"></div>
+      <button class="btn-primary" id="toTask">领取任务</button>
+    </section>
+
+    <!-- 任务 -->
+    <section id="stepTask" class="step hidden">
+      <div class="task-head"><span class="pill" id="taskKind"></span><span class="muted" id="taskHint"></span></div>
+      <div class="card script-card hidden" id="partyScript"></div>
+      <div class="card" id="questionCard"></div>
+      <div id="textAreaBox" class="hidden">
+        <textarea id="textAns" rows="5" placeholder="写下你在展板上看到的细节、年份或数字……"></textarea>
+        <label class="upload">上传现场照片（可选）
+          <input type="file" id="imgFile" accept="image/*" capture="environment">
+        </label>
+        <div class="muted" id="imgName"></div>
+      </div>
+      <button class="btn-primary" id="submitBtn">提交</button>
+      <div class="err" id="taskErr"></div>
+    </section>
+
+    <!-- 反馈 -->
+    <section id="stepFeedback" class="step hidden">
+      <h2 class="step-title" id="fbTitle"></h2>
+      <div class="card" id="fbBody"></div>
+      <button class="btn-primary" id="retryBtn">再试一次</button>
+      <button class="btn ghost" id="continueBtn">继续下一个点位</button>
+      <button class="btn ghost" id="cardBtn">生成本进度纪念卡</button>
+    </section>
+
+    <!-- 全站完成 -->
+    <section id="stepFinish" class="step hidden">
+      <div class="finish-mark">✓</div>
+      <h2 class="step-title">全部点位完成</h2>
+      <p class="step-sub" id="finishSub"></p>
+      <div class="stat-grid" id="finishStats"></div>
+      <button class="btn-primary" id="finalCardBtn">生成全线纪念卡</button>
+    </section>
+  </main>
+</div>
+
+<div class="sheet-mask hidden" id="memMask">
+  <div class="sheet card-sheet">
+    <div class="sheet-grab"></div>
+    <canvas id="memCanvas" width="1080" height="1440"></canvas>
+    <div class="card-actions">
+      <button class="btn" id="memSave">保存图片</button>
+      <button class="btn ghost" id="memClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="images.js"></script>
+<script src="learn.js"></script>
+</body>
+</html>
