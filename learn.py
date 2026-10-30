@@ -115,12 +115,15 @@ def build_task(site, identity, stage, cfg, want=""):
     """按身份/学段下发任务。党员走电子讲解 + 判断题；学生/其他走学段任务。"""
     is_party = identity == "party"
     if is_party:
+        pv = site["party"]
         return {
             "mode": "party",
-            "kind": "电子讲解",
-            "script": site["party"]["script"],
-            "questions": site["party"]["questions"],
-            "guide": "先听讲解，再完成下面的判断题；全部答对即标记该点位完成。",
+            "kind": "电子导览",
+            # 分段讲稿：前端逐段播放，可朗读、可翻页
+            "tour": pv.get("tour") or [],
+            "script": pv["script"],
+            "questions": pv["questions"],
+            "guide": "先听导览，再完成下面的判断题；全部答对即标记该点位完成。",
         }
 
     st = stage if stage in site["questions"] else "middle"
