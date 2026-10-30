@@ -8,12 +8,24 @@
   var STAGES = { primary: '小学', middle: '初中', high: '高中', college: '大学' };
   var IDENTS = { student: '学生', teacher: '教师', party: '党员', public: '群众' };
 
+  // 每个浏览器一个访客 ID：进度按它记录，互不干扰
+  var VISITOR = (function () {
+    var k = 'hy_visitor', v = null;
+    try { v = localStorage.getItem(k); } catch (e) { v = null; }
+    if (!v) {
+      v = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      try { localStorage.setItem(k, v); } catch (e) {}
+    }
+    return v;
+  })();
+
   function api(path, body) {
-    var opt = { headers: { 'Content-Type': 'application/json' }, method: 'POST' };
-    var tok = null;
-    try { tok = localStorage.getItem('hy_token'); } catch (e) { tok = null; }
-    if (tok) opt.headers.Authorization = 'Bearer ' + tok;
-    opt.body = JSON.stringify(body || {});
+    var payload = body || {};
+    payload.visitor = VISITOR;
+    var opt = {
+      headers: { 'Content-Type': 'application/json', 'X-Visitor': VISITOR },
+      method: 'POST', body: JSON.stringify(payload)
+    };
     return fetch(path, opt).then(function (r) { return r.json(); });
   }
 
@@ -47,7 +59,10 @@
       d.onclick = function () { openSite(s.id); };
       grid.appendChild(d);
     });
-    if (p.allDone) {
+    // 只在“刚完成全部点位”的那个动作里跳转完成页；普通加载不自动跳，
+    // 否则用户一点进页面就被带到完成页，看起来像“默认都学完了”。
+    if (p.allDone && state.justCompleted) {
+      state.justCompleted = false;
       setTimeout(function () { showFinish(p); }, 260);
     }
   }
@@ -192,6 +207,7 @@
       $('#continueBtn').classList.toggle('hidden', !r.ok);
       show('stepFeedback');
       if (r.ok && j.progress.allDone) {
+        state.justCompleted = true;
         state.afterFinish = function () { showFinish(j.progress); };
       }
     }).catch(function () {

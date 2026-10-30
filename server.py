@@ -934,6 +934,15 @@ def _safe(o):
     return str(o)
 
 
+
+def visitor_of(req, body_user=None):
+    """没有账号体系：用浏览器生成的访客 ID 区分进度，避免所有人共用一份。"""
+    v = (req.headers.get("X-Visitor") or "").strip()
+    if not v and isinstance(body_user, str):
+        v = body_user.strip()
+    return v[:40] if v else ""
+
+
 class Handler(SimpleHTTPRequestHandler):
     server_version = "HongjiYanan/2.0"
 
@@ -1088,12 +1097,12 @@ class Handler(SimpleHTTPRequestHandler):
             site = learn.get_site(sid)
             if not site:
                 return self._json({"ok": False, "error": "unknown_site"}, 404)
-            u = whoami(self)
+            vis = visitor_of(self, body.get("visitor"))
             return self._json({
                 "ok": True,
                 "site": {"id": site["id"], "no": site["no"], "name": site["name"],
                           "short": site["short"], "level": site["level"], "intro": site["intro"]},
-                "progress": learn.progress_of((u or {}).get("user", "anonymous")),
+                "progress": learn.progress_of(vis),
                 "sites": learn.site_list(),
                 "stages": learn.STAGES, "identities": learn.IDENTITIES,
             })
@@ -1113,8 +1122,7 @@ class Handler(SimpleHTTPRequestHandler):
             site = learn.get_site(sid)
             if not site:
                 return self._json({"ok": False, "error": "unknown_site"}, 404)
-            u = whoami(self)
-            user = (u or {}).get("user", "anonymous")
+            user = visitor_of(self, body.get("visitor"))
             ident = str(body.get("identity") or "student")
             stage = str(body.get("stage") or "middle")
             task = learn.build_task(site, ident, stage, llm_config())
@@ -1130,14 +1138,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "result": res, "progress": prog})
 
         if path == "/api/progress":
-            u = whoami(self)
-            user = (u or {}).get("user", "anonymous")
+            user = visitor_of(self, body.get("visitor"))
             return self._json({"ok": True, "progress": learn.progress_of(user),
                                "sites": learn.site_list()})
 
         if path == "/api/memorial":
-            u = whoami(self)
-            user = (u or {}).get("user", "anonymous")
+            user = visitor_of(self, body.get("visitor"))
             prog = learn.progress_of(user)
             sid = str(body.get("site") or "")
             site = learn.get_site(sid) if sid else None

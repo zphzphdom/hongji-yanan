@@ -71,9 +71,19 @@ def get_site(sid):
         return None
 
 
+def _key(user):
+    """进度归属：没有账号体系，用浏览器访客 ID；测试账号单独隔离。"""
+    u = (user or "").strip()
+    if not u:
+        return "anonymous"
+    if u.startswith(("selftest", "test", "unknown")):
+        return u
+    return "v:" + u[:40]
+
+
 def progress_of(user):
     data = _load()
-    p = data.get(user, {})
+    p = data.get(_key(user), {})
     done = [s for s in SITES if p.get(s["id"], {}).get("done")]
     return {
         "total": len(SITES),
@@ -91,7 +101,7 @@ def progress_of(user):
 def mark_done(user, sid, score, mode, detail=None):
     with LOCK:
         data = _load()
-        u = data.setdefault(user or "anonymous", {})
+        u = data.setdefault(_key(user), {})
         u[sid] = {"done": True, "score": score, "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                   "mode": mode, "detail": detail or {}}
         _save(data)

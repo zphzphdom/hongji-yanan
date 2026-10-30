@@ -10,7 +10,10 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8788"
 
 
 def req(path, body=None, timeout=120):
-    h = {"Content-Type": "application/json"}
+    h = {"Content-Type": "application/json", "X-Visitor": "selftest-runner"}
+    body = dict(body or {}) if body is not None else None
+    if body is not None:
+        body.setdefault("visitor", "selftest-runner")
     data = json.dumps(body).encode() if body is not None else None
     r = urllib.request.Request(BASE + path, data=data, headers=h,
                                method="POST" if body is not None else "GET")
