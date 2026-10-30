@@ -1,0 +1,88 @@
+{
+ "base": "http://127.0.0.1:8788",
+ "permissions": {
+  "anonConsole": 401,
+  "badPassword": 401,
+  "demoLogin": 200,
+  "judgeLogin": 200,
+  "demoAllow": [
+   "chat",
+   "console"
+  ],
+  "judgeAllow": [
+   "chat"
+  ]
+ },
+ "console": {
+  "dashboard": {
+   "status": 200,
+   "ok": true
+  },
+  "logs": {
+   "status": 200,
+   "ok": true
+  },
+  "kb": {
+   "status": 200,
+   "ok": true
+  }
+ },
+ "answers": [
+  {
+   "q": "宜川花椒有什么特点？",
+   "mode": "fact",
+   "status": 200,
+   "wallMs": 1481,
+   "llmMs": 1076,
+   "model": "deepseek-flash",
+   "image": "宜川花椒",
+   "imageSource": "网络图片",
+   "current": true,
+   "verdict": "unknown",
+   "webCount": 3,
+   "degraded": false,
+   "len": 91
+  },
+  {
+   "q": "南泥湾大生产运动是怎么回事？",
+   "mode": "research",
+   "status": 200,
+   "wallMs": 3682,
+   "llmMs": 3188,
+   "model": "deepseek-flash",
+   "image": "延安大桥和宝塔山",
+   "imageSource": "网络图片",
+   "current": true,
+   "verdict": "support",
+   "webCount": 3,
+   "degraded": false,
+   "len": 186
+  }
+ ],
+ "imageUse": {
+  "宜川花椒": 1,
+  "延安大桥和宝塔山": 1
+ },
+ "imageFiles": {
+  "ok": 2,
+  "bad": []
+ },
+ "checks": {
+  "每答必有图": true,
+  "基于实时联网": true,
+  "给出核查结论": true,
+  "三种模式": true,
+  "回答非空": true,
+  "权限隔离": true,
+  "judge 无后台权限": true,
+  "后台可访问": true
+ },
+ "latency": {
+  "wallP50": 2581,
+  "wallMax": 3682,
+  "llmP50": 2132,
+  "llmMax": 3188
+ },
+ "degraded": 0,
+ "pass": true
+}

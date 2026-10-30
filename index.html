@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C1F28">
+<title>红迹·延安 · AI 讲解员延小讲</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 应用 -->
+<div class="app" id="appView">
+  <header class="top">
+    <div class="top-row">
+      <div class="brand">
+        <span class="brand-name">红迹·延安</span>
+        <span class="brand-sub">AI 讲解员 · 延小讲</span>
+      </div>
+      <div class="top-actions">
+        <a class="ghost-btn" href="/learn.html">点位学习</a>
+      </div>
+    </div>
+    <div class="meta" id="kbMeta">知识库载入中…</div>
+    <div class="modes" id="modes" role="tablist">
+      <button class="mode on" data-mode="fact">史实问答</button>
+      <button class="mode" data-mode="research">研学讲解词</button>
+      <button class="mode" data-mode="moment">一句话</button>
+    </div>
+  </header>
+
+  <main class="chat" id="chat">
+    <section class="intro" id="intro">
+      <h1>在延安，问一句有出处的话</h1>
+      <p>知识库检索 + DeepSeek 联网 + 模型整合，每条回答都标来源、都配图；查不到的会直说“需要查证”。</p>
+      <div class="chips" id="chips"></div>
+    </section>
+  </main>
+
+  <footer class="composer">
+    <div class="input-wrap">
+      <textarea id="input" rows="1" placeholder="问点什么，比如：宝塔山为什么是延安的象征？"></textarea>
+      <button class="send" id="sendBtn">发送</button>
+    </div>
+    <div class="hint" id="statusHint">DeepSeek 生成中…</div>
+    <div class="hint" id="secretDot" title="">红迹·延安 · 1935—1948</div>
+  </footer>
+</div>
+
+<!-- 后台 -->
+<div class="console hidden" id="consoleView">
+  <header class="top console-top">
+    <div class="top-row">
+      <div class="brand"><span class="brand-name">后台</span><span class="brand-sub" id="consoleWho">—</span></div>
+      <button class="ghost-btn" id="backBtn">返回问答</button>
+    </div>
+    <div class="tabs" id="consoleTabs">
+      <button class="mode on" data-tab="dash">看板</button>
+      <button class="mode" data-tab="logs">日志</button>
+      <button class="mode" data-tab="kb">数据库</button>
+    </div>
+  </header>
+  <main class="console-body">
+    <section id="tab-dash"></section>
+    <section id="tab-logs" class="hidden"></section>
+    <section id="tab-kb" class="hidden"></section>
+  </main>
+</div>
+
+<div class="sheet-mask hidden" id="srcMask">
+  <div class="sheet">
+    <div class="sheet-grab"></div>
+    <h3 id="srcTitle">来源</h3>
+    <div id="srcBody"></div>
+    <button class="btn ghost" id="srcClose">关闭</button>
+  </div>
+</div>
+
+<div class="sheet-mask hidden" id="cardMask">
+  <div class="sheet card-sheet">
+    <div class="sheet-grab"></div>
+    <canvas id="cardCanvas" width="1080" height="1440"></canvas>
+    <div class="card-actions">
+      <button class="btn" id="dlBtn">保存图片</button>
+      <button class="btn ghost" id="copyBtn">复制文案</button>
+      <button class="btn ghost" id="cardClose">关闭</button>
+    </div>
+    <div class="card-tip">手机上也可长按图片保存</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="lightbox hidden" id="lightbox"></div>
+<script src="kb.js"></script>
+<script src="images.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

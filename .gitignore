@@ -1,6 +1,0 @@
-﻿data/config.json
-data/usage.jsonl
-docs/cf.log
-__pycache__/
-*.pyc
-.dsh-office-*
