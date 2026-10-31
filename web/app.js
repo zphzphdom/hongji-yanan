@@ -4,16 +4,24 @@
   var $ = function (s) { return document.querySelector(s); };
   var KB = window.RED_KB, idx = null, mode = 'fact', lastAnswer = null, qrImg = null, LLM = null, sending = false, cardImg = null, cardImgKey = '';
 
-  var CHIPS = ['A01', 'A09', 'A04', 'A18', 'A10', 'B05', 'C01', 'E04'];
+  var CHIPS = [
+    '宝塔山有多高？',
+    '党的七大什么时候开的？',
+    '南泥湾大生产是怎么回事？',
+    '枣园的纺车说明了什么？',
+    '延安精神包含哪些内容？',
+    '壶口瀑布在哪个县？'
+  ];
 
   /* ---------------- 知识库载入与热更新 ---------------- */
   function boot(kb) {
     KB = kb;
     idx = E.createIndex(kb);
-    var meta = '知识库 v' + kb.version + ' · ' + kb.count + ' 条 · ' + kb.sources +
-      ' 个来源 · 更新于 ' + kb.updated;
-    if (LLM) meta += ' · 在线模型 ' + LLM;
-    $('#kbMeta').textContent = meta;
+    // 知识库已下线：改为联网模式说明，避免出现 undefined
+    var meta = '联网实时生成';
+    if (LLM) meta += ' · ' + LLM;
+    var box = $('#kbMeta');
+    if (box) box.textContent = meta;
     renderChips();
   }
 
@@ -24,7 +32,7 @@
           var first = !window.RED_KB;
           window.RED_KB = kb;
           boot(kb);
-          if (!first) toast('知识库已更新至 v' + kb.version);
+          
         }
       }).catch(function () { /* 离线：用内嵌副本 */ });
   }
@@ -32,14 +40,15 @@
   /* ---------------- 渲染 ---------------- */
   function renderChips() {
     var box = $('#chips');
+    if (!box) return;
     box.innerHTML = '';
-    CHIPS.forEach(function (id) {
-      var e = KB.entries.filter(function (x) { return x.id === id; })[0];
-      if (!e) return;
+    CHIPS.forEach(function (q, i) {
       var b = document.createElement('button');
       b.className = 'chip';
-      b.textContent = e.q.replace(/？$/, '');
-      b.onclick = function () { ask(e.q); };
+      b.textContent = q.replace(/？$/, '');
+      // 依次淡入，视觉上更轻
+      b.style.animationDelay = (i * 60) + 'ms';
+      b.onclick = function () { ask(q); };
       box.appendChild(b);
     });
   }
@@ -86,7 +95,7 @@
     if (r.degraded) tags.push('本地兜底');
     if (r.model) tags.push(r.model + ' 生成');
     if (r.usedWeb) tags.push('已联网补充');
-    if (r.imageSource) tags.push('配图：' + r.imageSource);
+    if (r.imageSource && r.imageSource !== '网络图片') tags.push(r.imageSource);
     if (tags.length) b.appendChild(el('div', 'mode-note', tags.join(' · ')));
 
     var a = el('div', 'answer');
@@ -118,6 +127,7 @@
 
     if (r.sources && r.sources.length) {
       var row = el('div', 'src-row');
+      row.setAttribute('data-n', r.sources.length);
       r.sources.forEach(function (s) {
         var t = el('span', 'src-tag', s.id + ' · ' + s.org);
         t.onclick = function () { showSource(s); };
@@ -306,9 +316,9 @@
 
   /* ---------------- 核查结论：知识库只辨真伪 ---------------- */
   var VERDICT = {
-    support: { label: '知识库支持', cls: 'ok', hint: '与库内权威记载一致' },
-    conflict: { label: '与知识库冲突', cls: 'bad', hint: '以库内来源为准' },
-    unknown: { label: '知识库无记载', cls: 'warn', hint: '已联网生成，未见库内佐证' }
+    support: { label: '多来源印证', cls: 'ok', hint: '多个联网来源说法一致' },
+    conflict: { label: '来源有出入', cls: 'bad', hint: '不同来源说法不完全一致' },
+    unknown: { label: '单一来源', cls: 'warn', hint: '已联网生成，仅一处来源' }
   };
 
   function verdictBlock(v) {
@@ -319,6 +329,9 @@
     head.appendChild(el('span', 'verdict-hint', meta.hint));
     box.appendChild(head);
 
+    if (v.reason) {
+      box.appendChild(el('div', 'verdict-reason', v.reason));
+    }
     if (v.matched && v.matched.length) {
       var list = el('div', 'verdict-list');
       v.matched.forEach(function (m) {
@@ -344,12 +357,12 @@
   }
 
   function openEntry(m) {
-    $('#srcTitle').textContent = '知识库条目';
+    $('#srcTitle').textContent = '相关内容';
     var box = $('#srcBody');
     box.innerHTML = '';
     var d = el('div', 'src-item');
     d.innerHTML = '<div class="k">问题</div><div class="t">' + esc(m.q) + '</div>' +
-      '<div class="k" style="margin-top:8px">知识库记载</div><div class="t">' + esc(m.a || '') + '</div>' +
+      '<div class="k" style="margin-top:8px">相关记载</div><div class="t">' + esc(m.a || '') + '</div>' +
       (m.sources && m.sources.length ? '<div class="d">来源：' + esc(m.sources[0].org || '') + '《' +
         esc(m.sources[0].doc || '') + '》' + esc(m.sources[0].date || '') + '</div>' : '');
     box.appendChild(d);
@@ -736,7 +749,7 @@
         statCard('联网补充率', d.webRate + '%', d.usedWeb + ' 条用了联网') +
         statCard('拒答数', d.refused, '占比 ' + d.refusedRate + '%') +
         statCard('P50 时延', d.p50 + 'ms', 'P90 ' + d.p90 + 'ms') +
-        statCard('知识库', (d.kb.count || '-') + ' 条', (d.kb.sources || '-') + ' 个来源 · v' + (d.kb.version || '')) +
+        statCard('数据来源', '联网实时', '本地库已下线' + (d.kb && d.kb.ver ? '' : '') + ' · v' + (d.kb.version || '')) +
         '</div>' +
         '<div class="section-title">模式分布</div><div class="pills">' + (byMode || '<span class="muted">暂无</span>') + '</div>' +
         '<div class="section-title">来源可用性</div><div class="muted">' +
@@ -770,7 +783,7 @@
           esc(String(e.a || '').slice(0, 60)) + '…</td><td>' + (e.kind || '') + '</td><td>' +
           (e.image || '') + '</td><td>' + esc(s.org || '') + '<br><span class="muted">' + esc(s.date || '') + '</span></td></tr>';
       }).join('');
-      $('#tab-kb').innerHTML = '<div class="section-title">知识库 · ' + kb.count + ' 条 / ' + kb.sources +
+      $('#tab-kb').innerHTML = '<div class="section-title">联网缓存 · ' + kb.count + ' 条 / ' + kb.sources +
         ' 个来源 · v' + kb.version + '</div>' +
         '<div class="table-wrap"><table class="log-table"><thead><tr><th>编号</th><th>问题</th><th>标准回答</th>' +
         '<th>类型</th><th>配图</th><th>来源</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
