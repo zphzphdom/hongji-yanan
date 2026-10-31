@@ -770,23 +770,23 @@ def answer(query, mode, trace=False):
     # 核查：库内条目是否支持 / 冲突 / 查无
     verdict = verify_against_kb(text["text"], kb_hits)
 
-    # 关键词 → 先抓网络图；抓不到再退回本地图（整个回答只出一张）
+    # 配图：全部联网获取（本地图库不再作为首选，只在联网彻底失败时兜底一张）
     keywords = extract_keywords(query)
     img, img_src = pick_image(query, mode, kb_hits)
     web_img = None
-    try:
-        box_web = {}
-        th = threading.Thread(target=lambda: box_web.update(v=web_image(keywords)))
-        th.start()
-        th.join(timeout=6)
-        web_img = box_web.get("v")
-        # 抓不到就换一个更短的关键词再试一次（网络图必须尽量有）
-        if not web_img and keywords:
-            th2 = threading.Thread(target=lambda: box_web.update(v2=web_image(keywords[:1], timeout=6)))
-            th2.start(); th2.join(timeout=7)
-            web_img = box_web.get("v2")
-    except Exception:
-        web_img = None
+    for kws in (keywords, keywords[:1], ["延安"], ["宝塔山"]):
+        if not kws:
+            continue
+        try:
+            box_web = {}
+            th = threading.Thread(target=lambda: box_web.update(v=web_image(kws, timeout=7)))
+            th.start()
+            th.join(timeout=9)
+            web_img = box_web.get("v")
+        except Exception:
+            web_img = None
+        if web_img:
+            break
 
     srcs = []
     if verdict["level"] == "support":
@@ -806,7 +806,7 @@ def answer(query, mode, trace=False):
         "kb": [{"id": h.get("id"), "q": h.get("q"), "kind": h.get("kind")} for h in kb_hits],
         "sources": srcs,
         "web": web,
-        "image": img,
+        "image": "" if web_img else img,
         "imageUrl": (web_img or {}).get("url"),
         "imageCredit": (web_img or {}).get("credit"),
         "imageAlt": (web_img or {}).get("alt") or img,
@@ -1098,10 +1098,16 @@ class Handler(SimpleHTTPRequestHandler):
             identity = str(body.get("identity") or "public")
             stage = str(body.get("stage") or "middle")
             interest = str(body.get("interest") or "history")
-            duration = str(body.get("duration") or "half")
+            # 天数由用户自己填写
+            try:
+                days = int(str(body.get("days") or "1").strip() or 1)
+            except Exception:
+                days = 1
+            days = max(1, min(7, days))
             note = str(body.get("note") or "")[:120]
-            route = plan.plan_route(identity, stage, interest, duration, note)
-            head = plan.greet(identity, stage, interest, duration, note, route)
+            route = plan.plan_route(identity, stage, interest, days, note)
+            head = plan.greet(identity, stage, interest, days, note, route)
+            scope = [r["siteId"] for r in route]
             imgs, web = plan.collect_images(route, interest, note, llm_config())
             brief = plan.web_brief(interest, note, llm_config())
             # 任务：按身份给总量说明，具体每题在进入点位时下发
@@ -1114,15 +1120,16 @@ class Handler(SimpleHTTPRequestHandler):
                      % plan.STAGE_TXT.get(stage, "")) if identity == "student" else
                     ("本次为%s参观线路：每个点位看展陈、答 1 道题，完成即打勾。" % (
                         "教师" if identity == "teacher" else "主题"))),
-                "count": len(route),
+                "count": len(route), "days": days,
             }
             u = visitor_of(self, body.get("visitor"))
             append_log({"event": "plan", "q": head["title"], "user": u,
-                        "identity": identity, "interest": interest, "duration": duration})
+                        "identity": identity, "interest": interest, "days": days})
             return self._json({"ok": True, "title": head["title"], "intro": head["intro"],
-                               "label": head["label"], "route": route, "task": task,
+                               "label": head["label"], "route": route, "task": task, "days": days,
+                               "scope": scope,
                                "images": imgs, "webImages": web, "webBrief": brief,
-                               "progress": learn.progress_of(u)})
+                               "progress": learn.progress_of(u, scope)})
 
         if path == "/api/site":
             sid = str(body.get("site") or "")
@@ -1134,7 +1141,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "ok": True,
                 "site": {"id": site["id"], "no": site["no"], "name": site["name"],
                           "short": site["short"], "level": site["level"], "intro": site["intro"]},
-                "progress": learn.progress_of(vis),
+                "progress": learn.progress_of(vis, body.get("scope") or None),
                 "sites": learn.site_list(),
                 "stages": learn.STAGES, "identities": learn.IDENTITIES,
             })
@@ -1146,7 +1153,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False, "error": "unknown_site"}, 404)
             ident = str(body.get("identity") or "student")
             stage = str(body.get("stage") or "middle")
-            task = learn.build_task(site, ident, stage, llm_config())
+            task = learn.build_task(site, ident, stage, llm_config(), visitor=visitor_of(self, body.get("visitor")))
             return self._json({"ok": True, "task": task})
 
         if path == "/api/submit":
@@ -1157,26 +1164,29 @@ class Handler(SimpleHTTPRequestHandler):
             user = visitor_of(self, body.get("visitor"))
             ident = str(body.get("identity") or "student")
             stage = str(body.get("stage") or "middle")
-            task = learn.build_task(site, ident, stage, llm_config())
+            vis = visitor_of(self, body.get("visitor"))
+            # 用下发时那一套题判分，保证与用户看到的题一致
+            task = learn.served_task(vis, site["id"], ident, stage) or \
+                learn.build_task(site, ident, stage, llm_config(), visitor=vis)
             res = learn.judge(site, task, choice=body.get("choice"),
                               text=body.get("text"), image=body.get("image"), cfg=llm_config())
+            scope = body.get("scope") or None
             if res["ok"]:
-                prog = learn.mark_done(user, site["id"], res["score"], task["mode"],
-                                       {"kind": task["kind"]})
-            else:
-                prog = learn.progress_of(user)
+                learn.mark_done(user, site["id"], res["score"], task["mode"], {"kind": task["kind"]})
+            prog = learn.progress_of(user, scope)
             append_log({"event": "task", "q": site["name"], "user": user,
                         "mode": task["mode"], "ok": res["ok"], "score": res["score"]})
             return self._json({"ok": True, "result": res, "progress": prog})
 
         if path == "/api/progress":
             user = visitor_of(self, body.get("visitor"))
-            return self._json({"ok": True, "progress": learn.progress_of(user),
+            scope = body.get("scope") or None
+            return self._json({"ok": True, "progress": learn.progress_of(user, scope),
                                "sites": learn.site_list()})
 
         if path == "/api/memorial":
             user = visitor_of(self, body.get("visitor"))
-            prog = learn.progress_of(user)
+            prog = learn.progress_of(user, body.get("scope") or None)
             sid = str(body.get("site") or "")
             site = learn.get_site(sid) if sid else None
             signer = str(body.get("name") or "").strip()[:20]
