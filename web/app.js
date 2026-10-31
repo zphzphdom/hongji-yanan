@@ -107,14 +107,14 @@
       });
     }
     // 先图后文：图片能立刻给出讲的是哪个点，正文随后出
-    if (r.imageUrl || r.image) {
-      var pic = {
-        src: r.imageUrl || ((window.RED_IMAGES || {})[r.image] || {}).file,
-        alt: r.imageAlt || r.image || '',
-        credit: r.imageCredit || ('配图：' + (r.image || '')),
-        fallback: ((window.RED_IMAGES || {})[r.image] || {}).file
-      };
-      if (pic.src) b.appendChild(imageBlock(pic));
+    // 只显示联网搜到的图；没有就不配图，不回落到本地图库
+    if (r.imageUrl) {
+      b.appendChild(imageBlock({
+        src: r.imageUrl,
+        alt: r.imageAlt || '',
+        credit: r.imageCredit || '图源：网络',
+        fallback: ''
+      }));
     }
     b.appendChild(a);
 
