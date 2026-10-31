@@ -668,7 +668,7 @@
     g.font = '400 26px "PingFang SC",sans-serif';
     var det = c.detail;
     for (var j = 0; j < det.length; j += 20) { g.fillText(det.slice(j, j + 20), 80, y); y += 40; }
-    // 二维码：右下角，扫码回到问答/线路页
+    // 右下角：二维码（占 H-300 ~ H-110 的右侧区域）
     if (memQr && memQr.complete && memQr.naturalWidth) {
       var qs = 190, qx = W - 80 - qs, qy = H - 110 - qs;
       g.fillStyle = '#FFFFFF';
@@ -683,22 +683,26 @@
       g.textAlign = 'left';
     }
 
+    // 左下角：署名（与二维码左右分开，不重叠）
     var sign = (c.user || '').trim();
-    g.textAlign = 'right';
+    var signY = H - 210;
+    g.textAlign = 'left';
+    g.fillStyle = '#A6978E';
+    g.font = '400 20px "PingFang SC",sans-serif';
+    g.fillText('署名', 80, signY - 34);
     if (sign) {
       g.fillStyle = '#8C1F28';
-      g.font = '700 34px "Songti SC",serif';
-      g.fillText('—— ' + sign, W - 80, H - 190);
+      g.font = '700 38px "Songti SC",serif';
+      g.fillText(sign, 80, signY);
     } else {
       g.fillStyle = '#C4B8AE';
       g.font = '400 24px "PingFang SC",sans-serif';
-      g.fillText('（在上方填上你的名字）', W - 80, H - 190);
+      g.fillText('（在上方填上名字）', 80, signY);
     }
-    g.textAlign = 'left';
     g.fillStyle = '#A6978E';
     g.font = '400 22px "PingFang SC",sans-serif';
-    g.fillText('红迹·延安 · ' + new Date().toLocaleDateString('zh-CN'), 80, H - 150);
-    g.fillText('扫码继续参观', 80, H - 100);
+    g.fillText('红迹·延安 · ' + new Date().toLocaleDateString('zh-CN'), 80, H - 120);
+    g.fillText('扫码继续参观', 80, H - 80);
   }
 
   /* ---------------- 绑定 ---------------- */
