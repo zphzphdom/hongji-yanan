@@ -295,3 +295,66 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .tour-btn.main{background:var(--red);border-color:var(--red);color:#fff}
 .tour-btn:disabled{opacity:.4;cursor:default}
 .tour-tip{margin-top:10px;font-size:11.5px;color:#A6978E;text-align:center}
+
+/* ---------- 对话式开场 ---------- */
+.chat{display:flex;flex-direction:column;gap:10px;padding:6px 0 18px;max-height:none}
+.bubble{max-width:86%;padding:12px 15px;border-radius:14px;font-size:14.5px;line-height:1.7;
+  animation:popIn .22s ease}
+@keyframes popIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.bubble.ai{background:#fff;border:1px solid var(--line);color:#3A2E29;align-self:flex-start;
+  border-bottom-left-radius:4px}
+.bubble.me{background:var(--red);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.chat-opts{display:flex;flex-wrap:wrap;gap:8px;padding-bottom:10px}
+.chat-opt{border:1px solid var(--gold);background:#FFFDF9;color:var(--red);border-radius:20px;
+  padding:10px 18px;font-size:14px;font-family:var(--sans);cursor:pointer;transition:.15s}
+.chat-opt:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.chat-input{display:flex;gap:8px;margin-bottom:10px}
+.chat-input input{flex:1;border:1px solid var(--line);border-radius:10px;padding:12px;
+  font-size:14px;font-family:var(--sans)}
+.chat-send{border:none;background:var(--red);color:#fff;border-radius:10px;padding:0 18px;
+  font-size:14px;font-family:var(--sans);cursor:pointer}
+
+/* ---------- 任务与线路 ---------- */
+.plan-head{margin-bottom:14px}
+.pill{display:inline-block;background:rgba(140,31,40,.08);color:var(--red);border-radius:20px;
+  padding:4px 12px;font-size:11.5px;letter-spacing:.06em;margin-bottom:8px}
+.task-brief{background:#FFFBF4;border-left:4px solid var(--gold);margin-bottom:16px}
+.brief-title{font-size:11.5px;color:var(--gold);letter-spacing:.1em;margin-bottom:6px}
+.gallery{overflow:hidden;margin:0 -18px 18px;padding:0 18px}
+.gallery.hidden{display:none}
+.gallery-track{display:flex;gap:10px;transition:transform .6s cubic-bezier(.4,0,.2,1)}
+.gallery-item{flex:0 0 210px;margin:0;position:relative;border-radius:12px;overflow:hidden;
+  background:#EFE7DE;box-shadow:0 2px 8px rgba(80,50,30,.12)}
+.gallery-item img{width:210px;height:140px;object-fit:cover;display:block}
+.gallery-item figcaption{position:absolute;left:0;right:0;bottom:0;padding:5px 8px;
+  background:linear-gradient(transparent,rgba(30,18,12,.78));color:#fff;font-size:10px}
+.gallery-item.broken{display:none}
+.route-title{font-size:12px;color:var(--grey);letter-spacing:.08em;margin:6px 0 10px}
+.route{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.route-item{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);
+  border-radius:12px;padding:14px;cursor:pointer;transition:.15s}
+.route-item:hover{border-color:var(--gold);transform:translateY(-1px)}
+.route-no{flex:0 0 26px;height:26px;border-radius:50%;background:var(--red);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.route-main{flex:1;min-width:0}
+.route-name{font-size:15px;color:var(--ink);font-weight:600;margin-bottom:4px}
+.route-lv{margin-left:8px;font-size:10px;color:var(--gold);border:1px solid var(--gold);
+  border-radius:3px;padding:1px 4px;vertical-align:middle}
+.route-why{font-size:12.5px;color:var(--grey);line-height:1.6}
+.route-min{flex:0 0 auto;font-size:11px;color:#A6978E}
+
+/* 联网最新信息 */
+.web-brief{background:#F7F3EE;border-radius:10px;padding:12px 14px;margin-bottom:16px}
+.web-brief.hidden{display:none}
+.wb-head{font-size:11px;color:var(--gold);letter-spacing:.08em;margin-bottom:8px}
+.wb-row{display:flex;flex-direction:column;gap:2px;padding:7px 0;border-top:1px solid #EAE0D5;
+  text-decoration:none}
+.wb-title{font-size:13px;color:#3A2E29;line-height:1.5}
+.wb-site{font-size:10.5px;color:#A6978E}
+
+/* 纪念卡署名 */
+.mem-name{margin:12px 0 8px;text-align:left}
+.mem-name label{display:block;font-size:11.5px;color:var(--grey);letter-spacing:.06em;margin-bottom:6px}
+.mem-name input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;
+  padding:11px 13px;font-size:14px;font-family:var(--sans);background:#fff}
+.mem-name input:focus{outline:none;border-color:var(--gold)}
