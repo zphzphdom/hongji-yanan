@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#8C1F28">
-<title>红迹·延安 · 点位学习</title>
+<title>红迹·延安 · 智能线路</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -13,9 +13,9 @@
     <div class="top-row">
       <div class="brand">
         <span class="brand-name">红迹·延安</span>
-        <span class="brand-sub" id="siteName">点位学习</span>
+        <span class="brand-sub" id="siteName">延小讲 · 陪你走延安</span>
       </div>
-      <a class="ghost-btn" href="/" id="backChat">去问答</a>
+      <a class="ghost-btn" href="/">去问答</a>
     </div>
     <div class="progress-line">
       <div class="progress-bar"><i id="progFill" style="width:0%"></i></div>
@@ -24,34 +24,51 @@
   </header>
 
   <main class="learn-body">
-    <!-- 点位选择 -->
-    <section id="stepPick" class="step">
-      <h2 class="step-title">选择一个展览点位</h2>
-      <p class="step-sub">现场扫点位二维码会直接进入对应点位；也可以在这里手动选择。</p>
-      <div class="site-grid" id="siteGrid"></div>
+    <!-- 一、对话式开场 -->
+    <section id="stepChat" class="step">
+      <div class="chat" id="chatLog"></div>
+      <div class="chat-opts" id="chatOpts"></div>
+      <div class="chat-input hidden" id="chatInputBox">
+        <input id="chatInput" type="text" placeholder="比如：想带孩子看南泥湾，半天时间" maxlength="60">
+        <button class="chat-send" id="chatSend">发送</button>
+      </div>
+      <button class="btn ghost hidden" id="chatGen">生成我的线路</button>
     </section>
 
-    <!-- 讲解 -->
+    <!-- 二、任务 + 主题线路 -->
+    <section id="stepPlan" class="step hidden">
+      <div class="plan-head">
+        <span class="pill" id="planLabel"></span>
+        <h2 class="step-title" id="planTitle"></h2>
+        <p class="step-sub" id="planIntro"></p>
+      </div>
+
+      <div class="card task-brief">
+        <div class="brief-title">你的任务</div>
+        <div id="taskSummary"></div>
+      </div>
+
+      <div class="gallery" id="gallery"></div>
+
+      <div class="web-brief hidden" id="webBrief"></div>
+
+      <div class="route-title">主题线路 <span class="muted" id="routeCount"></span></div>
+      <div class="route" id="routeList"></div>
+
+      <button class="btn-primary" id="startRoute">从第一个点位开始</button>
+      <button class="btn ghost" id="reChat">重新说说需求</button>
+    </section>
+
+    <!-- 三、点位讲解 -->
     <section id="stepIntro" class="step hidden">
       <div class="site-head"><span class="site-no" id="introNo">01</span>
         <div><h2 class="step-title" id="introName"></h2><div class="muted" id="introLevel"></div></div></div>
       <div class="card intro-card" id="introText"></div>
-      <div class="kv" id="introFacts"></div>
-      <button class="btn-primary" id="toIdentity">开始学习</button>
+      <button class="btn-primary" id="toTask2">领取本点位任务</button>
+      <button class="btn ghost" id="backPlan">返回线路</button>
     </section>
 
-    <!-- 身份与学段 -->
-    <section id="stepIdentity" class="step hidden">
-      <h2 class="step-title">你是哪位参观者？</h2>
-      <p class="step-sub">这会决定给你的任务类型：学生按学段发任务，党员直接进入电子讲解与判断题。</p>
-      <div class="opt-label">身份</div>
-      <div class="opts" id="identOpts"></div>
-      <div class="opt-label" id="stageLabel">学段</div>
-      <div class="opts" id="stageOpts"></div>
-      <button class="btn-primary" id="toTask">领取任务</button>
-    </section>
-
-    <!-- 任务 -->
+    <!-- 四、任务 -->
     <section id="stepTask" class="step hidden">
       <div class="task-head"><span class="pill" id="taskKind"></span><span class="muted" id="taskHint"></span></div>
       <div class="card script-card hidden" id="partyScript"></div>
@@ -67,19 +84,19 @@
       <div class="err" id="taskErr"></div>
     </section>
 
-    <!-- 反馈 -->
+    <!-- 五、反馈 -->
     <section id="stepFeedback" class="step hidden">
       <h2 class="step-title" id="fbTitle"></h2>
       <div class="card" id="fbBody"></div>
       <button class="btn-primary" id="retryBtn">再试一次</button>
-      <button class="btn ghost" id="continueBtn">继续下一个点位</button>
+      <button class="btn ghost" id="continueBtn">下一个点位</button>
       <button class="btn ghost" id="cardBtn">生成本进度纪念卡</button>
     </section>
 
-    <!-- 全站完成 -->
+    <!-- 六、完成 -->
     <section id="stepFinish" class="step hidden">
       <div class="finish-mark">✓</div>
-      <h2 class="step-title">全部点位完成</h2>
+      <h2 class="step-title">线路全部完成</h2>
       <p class="step-sub" id="finishSub"></p>
       <div class="stat-grid" id="finishStats"></div>
       <button class="btn-primary" id="finalCardBtn">生成全线纪念卡</button>
@@ -90,6 +107,10 @@
 <div class="sheet-mask hidden" id="memMask">
   <div class="sheet card-sheet">
     <div class="sheet-grab"></div>
+    <div class="mem-name">
+      <label for="memName">署名（会印在卡片上）</label>
+      <input id="memName" type="text" maxlength="12" placeholder="填你的名字或昵称">
+    </div>
     <canvas id="memCanvas" width="1080" height="1440"></canvas>
     <div class="card-actions">
       <button class="btn" id="memSave">保存图片</button>
