@@ -604,6 +604,13 @@
     return (v || '').trim().slice(0, 12);
   }
 
+  var memQr = null;
+  (function loadMemQr() {
+    memQr = new Image();
+    memQr.onload = function () { if (lastName) drawMemorial(lastName); };
+    memQr.src = 'qr.png';
+  })();
+
   function openMemorial(siteId) {
     api('/api/memorial', { site: siteId || '', name: signerName(), scope: state.scope }).then(function (j) {
       if (!j || !j.ok) return;
@@ -661,6 +668,21 @@
     g.font = '400 26px "PingFang SC",sans-serif';
     var det = c.detail;
     for (var j = 0; j < det.length; j += 20) { g.fillText(det.slice(j, j + 20), 80, y); y += 40; }
+    // 二维码：右下角，扫码回到问答/线路页
+    if (memQr && memQr.complete && memQr.naturalWidth) {
+      var qs = 190, qx = W - 80 - qs, qy = H - 110 - qs;
+      g.fillStyle = '#FFFFFF';
+      g.fillRect(qx - 12, qy - 12, qs + 24, qs + 24);
+      g.strokeStyle = '#E7DCD3'; g.lineWidth = 2;
+      g.strokeRect(qx - 12, qy - 12, qs + 24, qs + 24);
+      g.drawImage(memQr, qx, qy, qs, qs);
+      g.fillStyle = '#6E625C';
+      g.font = '400 20px "PingFang SC",sans-serif';
+      g.textAlign = 'center';
+      g.fillText('扫码继续问', qx + qs / 2, qy + qs + 26);
+      g.textAlign = 'left';
+    }
+
     var sign = (c.user || '').trim();
     g.textAlign = 'right';
     if (sign) {
