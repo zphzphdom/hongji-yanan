@@ -173,6 +173,11 @@ def _grams(s):
 
 def load_index():
     path = os.path.join(DATA, "kb.json")
+    if not os.path.exists(path):
+        # 知识库已下线：只用联网 + 临时缓存（返回完整空索引，避免下游 KeyError）
+        return ({"entries": [], "idf": {}, "avg": 1.0, "tags": [], "tagmap": {},
+                 "intents": [], "intentmap": {}, "places": [], "title_df": {}},
+                {"entries": [], "version": "web-only", "sources": 0})
     mtime = os.path.getmtime(path) if os.path.exists(path) else 0
     if _CACHE["mtime"] == mtime and _CACHE["idx"]:
         return _CACHE["idx"], _CACHE["kb"]
@@ -481,6 +486,42 @@ def pick_image(query, mode, kb_hits):
     return FALLBACKS.get(mode, "宝塔山"), "默认图"
 
 
+# ---------------------------------------------------------------- 临时库（联网结果缓存）
+
+WEBCACHE = os.path.join(DATA, "webcache.json")
+WEB_TTL = 30 * 60          # 30 分钟内同问直接复用检索结果，避免重复请求
+
+
+def _wc_load():
+    return read_json(WEBCACHE, {}) or {}
+
+
+def web_cache_get(q):
+    key = hashlib.sha1(str(q).encode("utf-8")).hexdigest()[:16]
+    c = _wc_load()
+    item = c.get(key)
+    if not item:
+        return None
+    if time.time() - item.get("ts", 0) > WEB_TTL:
+        return None
+    return item.get("hits") or []
+
+
+def web_cache_put(q, hits):
+    key = hashlib.sha1(str(q).encode("utf-8")).hexdigest()[:16]
+    with LOCK:
+        c = _wc_load()
+        c[key] = {"q": str(q)[:120], "ts": time.time(), "hits": hits[:8]}
+        # 只保留最近 500 条
+        if len(c) > 500:
+            for k in sorted(c, key=lambda x: c[x].get("ts", 0))[:len(c) - 500]:
+                c.pop(k, None)
+        try:
+            write_json(WEBCACHE, c)
+        except Exception:
+            pass
+
+
 # ---------------------------------------------------------------- 关键词抽取（联网取图用）
 
 KW_NOISE = set("什么 怎么 为什么 哪里 多少 哪些 请问 一下 介绍 讲讲 告诉 帮我 可以 是否 有没有 吗 呢 啊 吧".split())
@@ -526,14 +567,24 @@ IMG_BAD_HOST = ("google.", "gstatic.", "facebook.", "twitter.", "instagram.", "t
                 "zhimg.com", "pstatic.", "doubleclick.")
 
 
+IMG_NEG_TTL = 6 * 3600  # 失败结果只保留 6 小时，之后重试
+
+
 def _img_cache():
     return read_json(IMG_CACHE_PATH, {}) or {}
+
+
 
 
 def _img_cache_put(key, val):
     with LOCK:
         c = _img_cache()
         c[key] = val
+        ts = c.get("__ts__")
+        if not isinstance(ts, dict):
+            ts = {}
+        ts[key] = time.time()
+        c["__ts__"] = ts
         try:
             write_json(IMG_CACHE_PATH, c)
         except Exception:
@@ -562,102 +613,178 @@ def _site_name(w):
         return "网络"
 
 
-def _page_first_image(page_url, timeout=6):
-    """从网页里取一张正文主图：优先 og:image，其次正文里第一张合格大图。"""
+def _fetch_page_images(page_url, timeout=5, limit=8):
+    """抓一个页面里的候选图片地址：og:image 优先，兼容懒加载属性。"""
     try:
         req = urllib.request.Request(page_url, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Referer": "https://www.baidu.com/"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            ctype = r.headers.get("Content-Type") or ""
+            ctype = (r.headers.get("Content-Type") or "").lower()
             if "html" not in ctype and "xml" not in ctype:
-                return None
+                return []
             html = r.read(400000).decode("utf-8", "ignore")
     except Exception:
-        return None
+        return []
 
     cands = []
-    m = re.search(r'<meta[^>]+(?:property|name)=["\'](?:og:image|twitter:image)["\'][^>]*content=["\']([^"\']+)', html, re.I)
-    if m:
-        cands.append(m.group(1))
-    m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\'](?:og:image|twitter:image)["\']', html, re.I)
-    if m:
-        cands.append(m.group(1))
-    cands += re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html)[:40]
+    Q = "[" + chr(34) + chr(39) + "]"          # ["']
+    NOTQ = "([^" + chr(34) + chr(39) + "]+)"   # 捕获组
 
+    # og:image / twitter:image（两种属性顺序）
+    for pat in (
+        "<meta[^>]+(?:property|name)=" + Q + "(?:og:image|twitter:image)" + Q + "[^>]*content=" + Q + NOTQ,
+        "<meta[^>]+content=" + Q + NOTQ + Q + "[^>]*(?:property|name)=" + Q + "(?:og:image|twitter:image)" + Q,
+    ):
+        m = re.search(pat, html, re.I)
+        if m:
+            cands.append(m.group(1))
+
+    # 正文图：src / data-src / data-original / data-lazy-src
+    for attr in ("src", "data-src", "data-original", "data-lazy-src", "data-echo"):
+        pat = "<img[^>]+" + attr + "=" + Q + NOTQ + Q
+        cands += re.findall(pat, html, re.I)[:20]
+    # srcset 取第一个地址
+    for ss in re.findall("<img[^>]+srcset=" + Q + NOTQ + Q, html, re.I)[:10]:
+        cands.append(ss.split(",")[0].strip().split(" ")[0])
+
+    out, seen = [], set()
+    DATEISH = re.compile(r"(20\d{2}[-/]?\d{2}[-/]?\d{2})|(/upload/)|(/photo/)", re.I)
     for c in cands:
         if not c or c.startswith("data:"):
             continue
-        if re.search(r"(logo|icon|avatar|qrcode|share|blank|spacer|ad_)", c, re.I):
-            continue
         u = urllib.parse.urljoin(page_url, c)
-        if not IMG_OK.search(u.split("?")[0]):
+        low = u.lower()
+        if not IMG_OK.search(low.split("?")[0]):
             continue
-        if any(h in u for h in IMG_BAD_HOST):
+        if any(h in low for h in IMG_BAD_HOST):
             continue
-        if re.search(r"(yc|fanhui|nav|btn|arrow|close|more|top|next|prev)\d*\.(png|gif)$", u.split("?")[0], re.I):
+        # 站点模板图：既像图标又没有日期/上传目录，直接丢弃
+        if re.search(r"(logo|icon|avatar|qrcode|share|blank|spacer|banner|wechatimg|default)", low):
+            if not DATEISH.search(low):
+                continue
+        if u in seen:
             continue
-        if _url_alive(u) and _img_big_enough(u):
-            return u
-    return None
+        seen.add(u)
+        out.append(u)
+        if len(out) >= limit:
+            break
+    return out
 
 
-def _img_big_enough(url, timeout=8, min_w=400, min_h=260):
-    """只收真实照片：宽 >=400、高 >=260，且不是纯色占位图。"""
+def _img_head_ok(url, timeout=4, min_bytes=25000):
+    """轻量校验：只发 HEAD，看类型与大小，不下载图片本体。"""
     try:
-        req = urllib.request.Request(url, headers={
+        req = urllib.request.Request(url, method="HEAD", headers={
             "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            blob = r.read(1500000)
-        import io as _io
-        from PIL import Image
-        im = Image.open(_io.BytesIO(blob))
-        w, h = im.size
-        if w < min_w or h < min_h:
-            return False
-        ratio = w / max(1, h)
-        if ratio > 3.2 or ratio < 0.32:
-            return False
-        return True
+            ctype = (r.headers.get("Content-Type") or "").lower()
+            size = int(r.headers.get("Content-Length") or 0)
+            if not ctype.startswith("image/"):
+                return False
+            return size == 0 or size >= min_bytes
     except Exception:
         return False
 
 
-def web_image(keywords, timeout=8):
-    """从网络取一张与关键词相关的图：先看检索结果有没有图片直链，再从相关网页抓主图。"""
+def web_image(keywords, timeout=5):
+    """按关键词从网上取一张相关图：并行抓候选页 → 并行 HEAD 校验 → 命名域过滤。"""
     if not keywords:
         return None
     key = "|".join(keywords[:2])
     cache = _img_cache()
     if key in cache:
-        return cache[key] or None
+        val = cache[key]
+        if val:
+            return val
+        ts = (cache.get("__ts__") or {}).get(key, 0) if isinstance(cache.get("__ts__"), dict) else 0
+        if time.time() - ts < IMG_NEG_TTL:
+            return None
 
     cfg = llm_config()
     found = None
     if cfg["key"] and cfg["search_on"]:
-        results = []
-        for q in (" ".join(keywords), " ".join(keywords) + " 图片"):
-            try:
-                results += ds_search(cfg, q, timeout=timeout)
-            except Exception:
-                pass
+        try:
+            results = ds_search(cfg, " ".join(keywords) + " 图片", timeout=timeout)
+        except Exception:
+            results = []
 
+        # 结果本身就是图片
+        BADNAME = ("logo", "icon", "avatar", "qrcode", "share", "banner", "wechat",
+                   "admin", "default", "placeholder", "empty")
         for w in results:
             u = w.get("url") or ""
-            if IMG_OK.search(u) and not any(h in u for h in IMG_BAD_HOST) and _url_alive(u):
-                found = {"url": u, "credit": "图源：" + _site_name(w),
-                         "alt": " ".join(keywords)}
-                break
-
-        if not found:
-            GOOD = ("gov.cn", "xinhuanet", "people.com.cn", "cnwest.com", "hsw.cn", "gmw.cn", "cnr.cn")
-            ranked = sorted(results, key=lambda w: 0 if any(d in (w.get("url") or "") for d in GOOD) else 1)
-            for w in ranked[:4]:
-                u = _page_first_image(w.get("url") or "")
-                if u:
-                    found = {"url": u, "credit": "图源：" + _site_name(w),
-                             "alt": " ".join(keywords)}
+            low = u.lower()
+            if any(b in low for b in BADNAME):
+                continue
+            if re.search(r"(sheji|stock|vcg|cfp|veer|zcool|699pic)", low):
+                continue
+            if IMG_OK.search(u.split("?")[0]) and not any(h in u for h in IMG_BAD_HOST):
+                if _img_head_ok(u):
+                    found = {"url": u, "credit": "图源：" + _site_name(w), "alt": " ".join(keywords)}
                     break
+
+        # 从相关页面里抓候选图（并行）
+        if not found and results:
+            GOOD = ("gov.cn", "xinhuanet", "people.com.cn", "cnwest.com", "hsw.cn",
+                    "gmw.cn", "cnr.cn", "yanews.cn", "cn")
+            ranked = sorted(results, key=lambda w: 0 if any(d in (w.get("url") or "") for d in GOOD) else 1)
+            pages = [w for w in ranked[:6] if (w.get("url") or "").startswith("http")]
+
+            cands, boxes = [], {}
+            lock = threading.Lock()
+
+            def grab(u):
+                imgs = _fetch_page_images(u, timeout=4)
+                with lock:
+                    cands.extend(imgs)
+
+            ths = [threading.Thread(target=grab, args=(w["url"],)) for w in pages]
+            for th in ths:
+                th.start()
+            for th in ths:
+                th.join(timeout=5)
+
+            # 并行 HEAD 校验，取第一个合格的
+            verdict = {}
+
+            def check(u):
+                verdict[u] = _img_head_ok(u, timeout=4)
+
+            uniq = []
+            for u in cands:
+                if u not in uniq:
+                    uniq.append(u)
+            cths = [threading.Thread(target=check, args=(u,)) for u in uniq[:12]]
+            for th in cths:
+                th.start()
+            for th in cths:
+                th.join(timeout=5)
+            def quality(u):
+                low = u.lower()
+                score = 0
+                if re.search(r"20\d{2}[-/]?\d{2}[-/]?\d{2}", low):
+                    score += 3
+                if "/photo/" in low or "/upload/" in low or "/pic/" in low:
+                    score += 2
+                if any(h in low for h in ("news.cn", "xinhuanet", "people.com.cn", "cnr.cn",
+                                          "yanews.cn", "cnwest.com", "gmw.cn", "yanan.gov.cn")):
+                    score += 2
+                if re.search(r"(sheji|stock|vcg|cfp|veer|zcool|699pic)", low):
+                    score -= 3
+                return score
+
+            uniq.sort(key=lambda u: -quality(u))
+            for u in uniq[:12]:
+                if verdict.get(u):
+                    site = "相关报道"
+                    for w in ranked:
+                        if (w.get("url") or "") and u.find("//") > 0:
+                            site = _site_name(w)
+                            break
+                    found = {"url": u, "credit": "图源：" + site, "alt": " ".join(keywords)}
+                    break
+
     _img_cache_put(key, found)
     return found
 
@@ -749,7 +876,12 @@ def answer(query, mode, trace=False):
     t0 = time.time()
     cfg = llm_config()
     kb_hits, kb = search_kb(query, 3)
-    web_hits = ds_search(cfg, query)
+    # 先查临时库（30 分钟内的联网结果），没有再联网
+    web_hits = web_cache_get(query)
+    if web_hits is None:
+        web_hits = ds_search(cfg, query)
+        if web_hits:
+            web_cache_put(query, web_hits)
 
     budget = {"fact": 900, "research": 1500, "moment": 700}.get(mode, 900)
     text, err = ds_chat(cfg, query, mode, web_hits, timeout=22, budget=budget)
@@ -767,35 +899,35 @@ def answer(query, mode, trace=False):
     if not text:
         text = {"text": fallback_text(query, mode, kb_hits), "model": None, "ms": 0, "tokens": 0}
 
-    # 核查：库内条目是否支持 / 冲突 / 查无
-    verdict = verify_against_kb(text["text"], kb_hits)
+    # 核查：知识库下线后改为「联网多源」判断
+    if kb_hits:
+        verdict = verify_against_kb(text["text"], kb_hits)
+    else:
+        n_src = len({(w.get("site") or "") for w in web_hits})
+        if not web_hits:
+            verdict = {"level": "unknown", "matched": [], "reason": "本次未取到联网结果"}
+        elif n_src >= 2:
+            verdict = {"level": "support", "matched": [],
+                       "reason": "联网 %d 个来源可相互印证" % n_src}
+        else:
+            verdict = {"level": "unknown", "matched": [],
+                       "reason": "仅 1 个联网来源，未做交叉印证"}
 
     # 配图：按问题关键词从网上搜相关图片；搜不到就不配图，不再回落到本地图库
     keywords = extract_keywords(query)
+    # 命中条目里的地名通常比用户原句更适合搜图（如「杨家岭革命旧址」）
+    place_kw = []
+    for h in kb_hits[:2]:
+        for w in extract_keywords(h.get("q") or ""):
+            if w not in place_kw:
+                place_kw.append(w)
+    # 图片改为前端异步请求（/api/img），这里只给出检索用的关键词
+    img_keys = []
+    for grp in (place_kw, keywords):
+        for w in grp:
+            if w and w not in img_keys:
+                img_keys.append(w)
     web_img = None
-    tries = [keywords, keywords[:1], keywords[-1:], ["延安"]]
-    for kws in tries:
-        kws = [k for k in (kws or []) if k]
-        if not kws:
-            continue
-        try:
-            box_web = {}
-            th = threading.Thread(target=lambda: box_web.update(v=web_image(kws, timeout=8)))
-            th.start()
-            th.join(timeout=10)
-            web_img = box_web.get("v")
-        except Exception:
-            web_img = None
-        if web_img and (web_img.get("url") or ""):
-            # 只接受可信来源，避免抓到无关站点
-            try:
-                import plan as _plan
-                if not _plan._credible(web_img["url"]):
-                    web_img = None
-            except Exception:
-                pass
-        if web_img:
-            break
 
     srcs = []
     if verdict["level"] == "support":
@@ -816,10 +948,9 @@ def answer(query, mode, trace=False):
         "sources": srcs,
         "web": web,
         "image": "",
-        "imageUrl": (web_img or {}).get("url"),
-        "imageCredit": (web_img or {}).get("credit"),
-        "imageAlt": (web_img or {}).get("alt") or img,
-        "imageSource": "网络图片" if web_img else "",
+        "imageUrl": "",
+        "imagePending": True,
+        "imageKeys": img_keys[:4],
         "keywords": keywords,
         "model": text.get("model"),
         "llmMs": llm_ms,
@@ -831,11 +962,10 @@ def answer(query, mode, trace=False):
     } if trace else {
         "ok": True, "mode": mode, "text": text["text"], "current": bool(web_hits),
         "verdict": verdict, "kb": [{"id": h.get("id"), "q": h.get("q")} for h in kb_hits],
-        "sources": srcs, "web": web, "image": img,
-        "imageUrl": (web_img or {}).get("url"),
-        "imageCredit": (web_img or {}).get("credit"),
-        "imageAlt": (web_img or {}).get("alt") or img,
-        "imageSource": "网络图片" if web_img else "",
+        "sources": srcs, "web": web, "image": "",
+        "imageUrl": "",
+        "imagePending": True,
+        "imageKeys": img_keys[:4],
         "keywords": keywords,
         "model": text.get("model"), "llmMs": llm_ms, "usedWeb": bool(web_hits),
         "degraded": text.get("model") is None, "ms": int((time.time() - t0) * 1000),
@@ -905,7 +1035,7 @@ def dashboard():
         by_mode[r.get("mode", "?")] = by_mode.get(r.get("mode", "?"), 0) + 1
         refused += 1 if r.get("refused") else 0
         used_web += 1 if r.get("web") else 0
-        img += 1 if r.get("image") else 0
+        img += 1 if (r.get("imageUrl") or r.get("image")) else 0
         if isinstance(r.get("ms"), (int, float)):
             ms.append(r["ms"])
         u = r.get("user", "anonymous")
@@ -1202,6 +1332,56 @@ class Handler(SimpleHTTPRequestHandler):
             card = learn.memorial_card(user, prog, site=site, cfg=llm_config(), signer=signer)
             append_log({"event": "memorial", "user": user, "q": sid or "ALL"})
             return self._json({"ok": True, "card": card})
+
+        if path == "/api/img":
+            # 按关键词从网络取图（带缓存）；前端拿到后自己插入
+            kws = body.get("keys") or []
+            if isinstance(kws, str):
+                kws = [k for k in kws.split() if k]
+            kws = [str(k)[:16] for k in kws][:4]
+            got = None
+            deadline = time.time() + 9
+            for i in range(len(kws)):
+                if time.time() > deadline:
+                    break
+                for combo in (kws[i:i + 2], kws[i:i + 1]):
+                    combo = [k for k in combo if k]
+                    if not combo:
+                        continue
+                    try:
+                        box = {}
+                        th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=6)))
+                        th.start()
+                        th.join(timeout=7)
+                        got = box.get("v")
+                    except Exception:
+                        got = None
+                    if got and plan._credible(got.get("url") or "", strict=True):
+                        break
+                    got = None
+                if got:
+                    break
+            if not got:
+                # 兜底：放宽来源限制，只要有相关图就用（仍来自网络）
+                for i in range(len(kws)):
+                    combo = [k for k in kws[i:i + 2] if k]
+                    if not combo:
+                        continue
+                    try:
+                        box = {}
+                        th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=5)))
+                        th.start()
+                        th.join(timeout=6)
+                        got = box.get("v")
+                    except Exception:
+                        got = None
+                    if got and got.get("url"):
+                        break
+            if not got:
+                return self._json({"ok": True, "url": ""})
+            return self._json({"ok": True, "url": got.get("url"),
+                               "credit": got.get("credit") or "图源：网络",
+                               "alt": got.get("alt") or ""})
 
         if path == "/api/log":
             append_log({
