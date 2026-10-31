@@ -203,14 +203,14 @@
         lastDay = r.day;
         var dh = document.createElement('div');
         dh.className = 'route-day';
-        dh.textContent = '第 ' + r.day + ' 天';
+        dh.textContent = '第 ' + (r.day || '-') + ' 天';
         list.appendChild(dh);
       }
       var d = document.createElement('div');
       d.className = 'route-item';
       var mins = r.minutes ? r.minutes + ' 分钟' : '';
-      d.innerHTML = '<span class="route-no">' + r.order + '</span>' +
-        '<div class="route-main"><div class="route-name">' + r.name +
+      d.innerHTML = '<span class="route-no">' + (r.order || (i + 1)) + '</span>' +
+        '<div class="route-main"><div class="route-name">' + (r.name || '未命名点位') +
         '<span class="route-lv">' + (r.level || '') + '</span></div>' +
         '<div class="route-why">' + (r.why || '') + '</div>' +
         (r.county ? '<div class="route-county">' + r.county + '</div>' : '') +
@@ -323,7 +323,7 @@
       $('#siteName').textContent = j.site.name;
       $('#introNo').textContent = j.site.no < 10 ? '0' + j.site.no : j.site.no;
       $('#introName').textContent = j.site.name;
-      $('#introLevel').textContent = j.site.level + ' 级景区 · 点位 ' + j.site.no;
+      $('#introLevel').textContent = (j.site.level || '') + ' 级景区 · 点位 ' + (j.site.no || '');
       $('#introText').textContent = j.site.intro;
       show('stepIntro');
     });
@@ -449,7 +449,7 @@
       task.questions.forEach(function (q, qi) {
         var box = document.createElement('div');
         box.className = 'q-block';
-        box.innerHTML = '<div class="q-title">第 ' + (qi + 1) + ' 题：' + q.q + '</div>';
+        box.innerHTML = '<div class="q-title">第 ' + (qi + 1) + ' 题：' + (q.q || '') + '</div>';
         var opts = document.createElement('div');
         opts.className = 'q-opts';
         q.options.forEach(function (o, oi) {
@@ -470,8 +470,8 @@
       var ttype = task.taskType || q.type || 'choice';
       var box2 = document.createElement('div');
       box2.className = 'q-block';
-      box2.innerHTML = '<div class="q-title">' + task.prompt + '</div>' +
-        '<div class="q-text">' + q.q + '</div>';
+      box2.innerHTML = '<div class="q-title">' + (task.prompt || '') + '</div>' +
+        '<div class="q-text">' + (q.q || '') + '</div>';
       if (ttype === 'choice') {
         var opts2 = document.createElement('div');
         opts2.className = 'q-opts';
@@ -559,7 +559,7 @@
       var nm = $('#imgName'); if (nm) nm.textContent = '';
       var last = state.routeIdx >= state.route.length - 1;
       $('#fbTitle').textContent = r.ok ? '这一站完成 ✓' : '还需要再想想';
-      $('#fbBody').textContent = r.feedback + (r.guide ? '\n\n' + r.guide : '');
+      $('#fbBody').textContent = (r.feedback || '') + (r.guide ? '\n\n' + r.guide : '');
       $('#retryBtn').classList.toggle('hidden', r.ok);
       $('#continueBtn').classList.toggle('hidden', !r.ok);
       $('#continueBtn').textContent = last ? '完成线路' : '下一个点位';
@@ -587,7 +587,7 @@
     done.forEach(function (s) {
       var d = document.createElement('div');
       d.className = 'stat';
-      d.innerHTML = '<div class="stat-v">' + (s.score || 0) + '</div><div class="stat-l">' + s.name + '</div>';
+      d.innerHTML = '<div class="stat-v">' + (s.score || 0) + '</div><div class="stat-l">' + (s.name || '') + '</div>';
       stats.appendChild(d);
     });
     show('stepFinish');
@@ -662,7 +662,7 @@
     g.fillStyle = '#E7DCD3'; g.fillRect(80, y, W - 160, 26);
     g.fillStyle = '#8C1F28'; g.fillRect(80, y, (W - 160) * (c.percent / 100), 26);
     g.font = '700 30px "PingFang SC",sans-serif';
-    g.fillText(c.done + ' / ' + c.total + ' 个点位完成', 80, y + 76);
+    g.fillText((c.done || 0) + ' / ' + (c.total || 0) + ' 个点位完成', 80, y + 76);
     y += 130;
     g.fillStyle = '#6E625C';
     g.font = '400 26px "PingFang SC",sans-serif';
