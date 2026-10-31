@@ -770,21 +770,30 @@ def answer(query, mode, trace=False):
     # 核查：库内条目是否支持 / 冲突 / 查无
     verdict = verify_against_kb(text["text"], kb_hits)
 
-    # 配图：全部联网获取（本地图库不再作为首选，只在联网彻底失败时兜底一张）
+    # 配图：按问题关键词从网上搜相关图片；搜不到就不配图，不再回落到本地图库
     keywords = extract_keywords(query)
-    img, img_src = pick_image(query, mode, kb_hits)
     web_img = None
-    for kws in (keywords, keywords[:1], ["延安"], ["宝塔山"]):
+    tries = [keywords, keywords[:1], keywords[-1:], ["延安"]]
+    for kws in tries:
+        kws = [k for k in (kws or []) if k]
         if not kws:
             continue
         try:
             box_web = {}
-            th = threading.Thread(target=lambda: box_web.update(v=web_image(kws, timeout=7)))
+            th = threading.Thread(target=lambda: box_web.update(v=web_image(kws, timeout=8)))
             th.start()
-            th.join(timeout=9)
+            th.join(timeout=10)
             web_img = box_web.get("v")
         except Exception:
             web_img = None
+        if web_img and (web_img.get("url") or ""):
+            # 只接受可信来源，避免抓到无关站点
+            try:
+                import plan as _plan
+                if not _plan._credible(web_img["url"]):
+                    web_img = None
+            except Exception:
+                pass
         if web_img:
             break
 
@@ -806,11 +815,11 @@ def answer(query, mode, trace=False):
         "kb": [{"id": h.get("id"), "q": h.get("q"), "kind": h.get("kind")} for h in kb_hits],
         "sources": srcs,
         "web": web,
-        "image": "" if web_img else img,
+        "image": "",
         "imageUrl": (web_img or {}).get("url"),
         "imageCredit": (web_img or {}).get("credit"),
         "imageAlt": (web_img or {}).get("alt") or img,
-        "imageSource": "网络图片" if web_img else img_src,
+        "imageSource": "网络图片" if web_img else "",
         "keywords": keywords,
         "model": text.get("model"),
         "llmMs": llm_ms,
@@ -826,7 +835,7 @@ def answer(query, mode, trace=False):
         "imageUrl": (web_img or {}).get("url"),
         "imageCredit": (web_img or {}).get("credit"),
         "imageAlt": (web_img or {}).get("alt") or img,
-        "imageSource": "网络图片" if web_img else img_src,
+        "imageSource": "网络图片" if web_img else "",
         "keywords": keywords,
         "model": text.get("model"), "llmMs": llm_ms, "usedWeb": bool(web_hits),
         "degraded": text.get("model") is None, "ms": int((time.time() - t0) * 1000),
