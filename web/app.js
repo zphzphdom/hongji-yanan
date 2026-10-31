@@ -2,7 +2,7 @@
   'use strict';
   var E = window.RedEngine;
   var $ = function (s) { return document.querySelector(s); };
-  var KB = window.RED_KB, idx = null, mode = 'fact', lastAnswer = null, qrImg = null, LLM = null, sending = false;
+  var KB = window.RED_KB, idx = null, mode = 'fact', lastAnswer = null, qrImg = null, LLM = null, sending = false, cardImg = null, cardImgKey = '';
 
   var CHIPS = ['A01', 'A09', 'A04', 'A18', 'A10', 'B05', 'C01', 'E04'];
 
@@ -402,7 +402,22 @@
     return y;
   }
 
+  // 卡片配图：只用联网图；加载完重绘一次
+  function ensureCardImage(r, question) {
+    var url = r.imageUrl || '';
+    if (!url) { cardImg = null; cardImgKey = ''; return; }
+    if (url === cardImgKey) return;
+    cardImgKey = url;
+    cardImg = new Image();
+    cardImg.crossOrigin = 'anonymous';
+    cardImg.referrerPolicy = 'no-referrer';
+    cardImg.onload = function () { drawCard(r, question); };
+    cardImg.onerror = function () { cardImg = null; drawCard(r, question); };
+    cardImg.src = url;
+  }
+
   function drawCard(r, question) {
+    ensureCardImage(r, question);
     var c = $('#cardCanvas'), g = c.getContext('2d');
     var W = c.width, H = c.height;
     g.clearRect(0, 0, W, H);
