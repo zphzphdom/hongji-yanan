@@ -222,7 +222,29 @@ def plan_route(identity, stage, interest, days=1, note=""):
     return route
 
 
-def greet(identity, stage, interest, days, note, route):
+OPENERS = [
+    "%s，按你说的 %s 天和「%s」，我排了 %d 个点位，分 %d 天走。",
+    "%s，%s 天、主题「%s」，%d 个点位给你串成了 %d 天。",
+    "%s，我按「%s」这个方向，把 %s 天的行程拆成 %d 个点位，一天一段。",
+    "%s，先定主题「%s」，再看时间 %s 天，最后落到 %d 个点位上。",
+    "%s，给你一条 %s 天的「%s」线：%d 个点位，分 %d 天。",
+]
+MIDDLES = [
+    "同一天尽量放在同一个县区，少折返。",
+    "每天的点位都在同一片区，路上不折腾。",
+    "按片区串的，一天一个方向，走起来顺。",
+    "先近后远，同一天不跨县。",
+    "点位之间留了缓冲，不用赶场。",
+]
+CLOSERS = [
+    "想调整就说一句，我重排。",
+    "不满意可以点下面的标签换个排法。",
+    "需要加要求，直接写在下面那栏。",
+    "顺序还想要别的侧重，随时说。",
+]
+
+
+def greet(identity, stage, interest, days, note, route, cfg=None):
     who = IDENT_TXT.get(identity, "朋友")
     topic = INTERESTS.get(interest, "革命旧址与事件")
     if identity == "student":
@@ -234,11 +256,56 @@ def greet(identity, stage, interest, days, note, route):
     else:
         label = "主题参观"
     title = "%s · %s（%s 天 · %d 个点位）" % (label, topic, days, len(route))
-    intro = ("%s，按你说的 %s 天和「%s」，我排了 %d 个点位，分 %d 天走；"
-             "同一天尽量放在同一个县区，少折返。") % (who, days, topic, len(route), days)
+
+    # 线路标题也用随机模板，避免每次都一样
+    TITLES = [
+        "%s · %s（%s 天 · %d 个点位）",
+        "%s｜%s｜%s 天 %d 站",
+        "%s · %s · %s 日线（%d 站）",
+        "%s：%s · %s 天 · %d 个点位",
+    ]
+    import random as _r
+    tpl_t = _r.choice(TITLES)
+    import re as _re
+    n_t = len(_re.findall(r"%[sd]", tpl_t))
+    title = tpl_t % (label, topic, days, len(route))[:n_t]
+
+    names = [x["name"] for x in route[:3]]
+    spot_line = "、".join(names) + ("等" if len(route) > 3 else "")
+
+    intro = ""
+    if cfg and cfg.get("key"):
+        try:
+            import json as _json
+            import urllib.request as _u
+            prompt = ("你是一名延安研学线路讲解员。刚给一位%s排了一条 %s 天的「%s」线路，"
+                      "点位是：%s。请写 2 句话作为开场介绍：第一句说明你怎么取舍的，"
+                      "第二句给他一个参观时的观察建议。不要罗列点位名字，不要客套，"
+                      "不超过 70 字，简体中文。"
+                      % (who, days, topic, "、".join(x["name"] for x in route[:6])))
+            payload = {"model": cfg["model"], "messages": [{"role": "user", "content": prompt}],
+                       "temperature": 1.0, "max_tokens": 900, "stream": False}
+            req = _u.Request(cfg["chat"], data=_json.dumps(payload).encode("utf-8"),
+                             headers={"Content-Type": "application/json",
+                                      "Authorization": "Bearer " + cfg["key"]}, method="POST")
+            with _u.urlopen(req, timeout=15) as r:
+                d = _json.loads(r.read().decode("utf-8"))
+            intro = (d.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+            intro = intro.replace("\n", " ")[:140]
+        except Exception:
+            intro = ""
+
+    if not intro:
+        import random as _r2
+        tpl = _r2.choice(OPENERS)
+        args = (who, days, topic, len(route), days)
+        need = len(_re.findall(r"%[sd]", tpl))
+        intro = (tpl % args[:need]) + _r2.choice(MIDDLES)
+
     if (note or "").strip():
-        intro += "你提到的「%s」，我也考虑进去了。" % note.strip()[:18]
-    return {"title": title, "intro": intro, "label": label}
+        intro += "你提到的「%s」也算进去了。" % note.strip()[:16]
+
+    return {"title": title, "intro": intro, "label": label, "spots": spot_line}
 
 
 # ---------------------------------------------------------------- 配图（全部联网）
