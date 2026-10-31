@@ -721,7 +721,7 @@ def _img_pixels_ok(url, timeout=6):
             return False
         return True
     except Exception:
-        return False
+        return None          # 无法判定：不因此拦截（网络/格式问题）
 
 
 def _img_relevant(url, page_title, context, keys):
@@ -1400,7 +1400,7 @@ class Handler(SimpleHTTPRequestHandler):
 
             got = None
             tried = set()
-            deadline = time.time() + 12
+            deadline = time.time() + 16
             combos = []
             for i in range(len(kws)):
                 combos.append(kws[i:i + 2])
@@ -1432,11 +1432,12 @@ class Handler(SimpleHTTPRequestHandler):
                 url2 = _img_https_ok(url)
                 if not url2:
                     continue
-                # ② 自动识别：是不是一张真实照片
-                if not _img_pixels_ok(url2):
-                    continue
-                # ③ 相关性：页面标题/关键词与回答内容对得上
+                # ② 相关性（便宜）：页面标题/关键词要和回答内容对得上
                 if ctx and not _img_relevant(url2, cand.get("pageTitle"), ctx, kws):
+                    continue
+                # ③ 自动识别（较贵）：确认真实照片；无法判定时不拦截
+                verdict = _img_pixels_ok(url2)
+                if verdict is False:
                     continue
                 got = {"url": url2, "credit": cand.get("credit") or "图源：网络",
                        "alt": cand.get("alt") or " ".join(combo)}
