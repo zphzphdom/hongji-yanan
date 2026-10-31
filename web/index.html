@@ -79,6 +79,10 @@
 <div class="sheet-mask hidden" id="cardMask">
   <div class="sheet card-sheet">
     <div class="sheet-grab"></div>
+    <div class="mem-name">
+      <label for="cardSigner">署名（会印在卡片上）</label>
+      <input id="cardSigner" type="text" maxlength="12" placeholder="填你的名字或昵称">
+    </div>
     <canvas id="cardCanvas" width="1080" height="1440"></canvas>
     <div class="card-actions">
       <button class="btn" id="dlBtn">保存图片</button>
