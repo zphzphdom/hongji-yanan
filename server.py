@@ -29,6 +29,7 @@ import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import learn
+import plan
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(ROOT, "web")
@@ -1092,6 +1093,37 @@ class Handler(SimpleHTTPRequestHandler):
                         "ip": self.client_address[0]})
             return self._json({"ok": True, **card})
 
+        if path == "/api/plan":
+            # 对话式开场：身份 + 学段 + 兴趣 + 时长 + 自由输入 → 任务与主题线路
+            identity = str(body.get("identity") or "public")
+            stage = str(body.get("stage") or "middle")
+            interest = str(body.get("interest") or "history")
+            duration = str(body.get("duration") or "half")
+            note = str(body.get("note") or "")[:120]
+            route = plan.plan_route(identity, stage, interest, duration, note)
+            head = plan.greet(identity, stage, interest, duration, note, route)
+            imgs, web = plan.collect_images(route, interest, note, llm_config())
+            brief = plan.web_brief(interest, note, llm_config())
+            # 任务：按身份给总量说明，具体每题在进入点位时下发
+            task = {
+                "mode": "party" if identity == "party" else "learn",
+                "summary": (
+                    "本次为党性教育线路：每个点位先听电子导览，再答 2 道判断题，全对即完成。"
+                    if identity == "party" else
+                    ("本次为%s研学线路：每个点位完成 1 个学习任务，可交选择题、文字或现场照片。"
+                     % plan.STAGE_TXT.get(stage, "")) if identity == "student" else
+                    ("本次为%s参观线路：每个点位看展陈、答 1 道题，完成即打勾。" % (
+                        "教师" if identity == "teacher" else "主题"))),
+                "count": len(route),
+            }
+            u = visitor_of(self, body.get("visitor"))
+            append_log({"event": "plan", "q": head["title"], "user": u,
+                        "identity": identity, "interest": interest, "duration": duration})
+            return self._json({"ok": True, "title": head["title"], "intro": head["intro"],
+                               "label": head["label"], "route": route, "task": task,
+                               "images": imgs, "webImages": web, "webBrief": brief,
+                               "progress": learn.progress_of(u)})
+
         if path == "/api/site":
             sid = str(body.get("site") or "")
             site = learn.get_site(sid)
@@ -1147,7 +1179,8 @@ class Handler(SimpleHTTPRequestHandler):
             prog = learn.progress_of(user)
             sid = str(body.get("site") or "")
             site = learn.get_site(sid) if sid else None
-            card = learn.memorial_card(user, prog, site=site, cfg=llm_config())
+            signer = str(body.get("name") or "").strip()[:20]
+            card = learn.memorial_card(user, prog, site=site, cfg=llm_config(), signer=signer)
             append_log({"event": "memorial", "user": user, "q": sid or "ALL"})
             return self._json({"ok": True, "card": card})
 
