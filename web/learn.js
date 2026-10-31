@@ -1,14 +1,7 @@
 (function () {
   'use strict';
   var $ = function (s) { return document.querySelector(s); };
-  var state = {
-    site: null, sites: [], stage: 'middle', identity: 'student',
-    task: null, progress: null, lastImage: null, afterFinish: null
-  };
-  var STAGES = { primary: '小学', middle: '初中', high: '高中', college: '大学' };
-  var IDENTS = { student: '学生', teacher: '教师', party: '党员', public: '群众' };
 
-  // 每个浏览器一个访客 ID：进度按它记录，互不干扰
   var VISITOR = (function () {
     var k = 'hy_visitor', v = null;
     try { v = localStorage.getItem(k); } catch (e) { v = null; }
@@ -19,61 +12,245 @@
     return v;
   })();
 
+  var state = {
+    site: null, sites: [], task: null, progress: null, lastImage: null,
+    identity: 'student', stage: 'middle', interest: '', duration: 'half', note: '',
+    plan: null, route: [], routeIdx: 0, justCompleted: false, afterFinish: null
+  };
+
+  var STAGES = { primary: '小学', middle: '初中', high: '高中', college: '大学' };
+  var IDENTS = { student: '学生', teacher: '教师', party: '党员', public: '群众' };
+  var INTERESTS = {
+    history: '革命旧址与事件', spirit: '延安精神与作风',
+    nature: '自然风光与黄河', art: '文艺与新闻出版', family: '亲子与研学'
+  };
+  var DURATIONS = { half: '半日', full: '一日', two: '两日' };
+
   function api(path, body) {
     var payload = body || {};
     payload.visitor = VISITOR;
-    var opt = {
+    return fetch(path, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Visitor': VISITOR },
-      method: 'POST', body: JSON.stringify(payload)
-    };
-    return fetch(path, opt).then(function (r) { return r.json(); });
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); });
   }
 
   function toast(msg) {
     var t = $('#toast');
-    t.textContent = msg;
-    t.classList.add('on');
+    t.textContent = msg; t.classList.add('on');
     clearTimeout(toast._t);
     toast._t = setTimeout(function () { t.classList.remove('on'); }, 2000);
   }
 
   function show(id) {
     if (id !== 'stepTask') stopSpeak();
-    ['stepPick', 'stepIntro', 'stepIdentity', 'stepTask', 'stepFeedback', 'stepFinish'].forEach(function (k) {
-      $('#' + k).classList.toggle('hidden', k !== id);
+    ['stepChat', 'stepPlan', 'stepIntro', 'stepTask', 'stepFeedback', 'stepFinish'].forEach(function (k) {
+      var el = $('#' + k);
+      if (el) el.classList.toggle('hidden', k !== id);
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function renderProgress(p) {
-    if (!p) return;
-    $('#progFill').style.width = p.percent + '%';
-    $('#progTxt').textContent = p.done + '/' + p.total;
-    var grid = $('#siteGrid');
-    grid.innerHTML = '';
-    p.sites.forEach(function (s) {
-      var d = document.createElement('button');
-      d.className = 'site-chip' + (s.done ? ' done' : '');
-      d.innerHTML = '<span class="chip-no">' + (s.no < 10 ? '0' + s.no : s.no) + '</span>' +
-        '<span class="chip-name">' + s.name + '</span>' +
-        (s.done ? '<span class="chip-ok">✓</span>' : '');
-      d.onclick = function () { openSite(s.id); };
-      grid.appendChild(d);
+  /* ---------------- 一、对话式开场 ---------------- */
+  function bubble(text, who) {
+    var log = $('#chatLog');
+    var d = document.createElement('div');
+    d.className = 'bubble ' + (who || 'ai');
+    d.textContent = text;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+    return d;
+  }
+
+  function optButtons(opts, onPick) {
+    var box = $('#chatOpts');
+    box.innerHTML = '';
+    Object.keys(opts).forEach(function (k) {
+      var b = document.createElement('button');
+      b.className = 'chat-opt';
+      b.textContent = opts[k];
+      b.onclick = function () { box.innerHTML = ''; onPick(k, opts[k]); };
+      box.appendChild(b);
     });
-    // 只在“刚完成全部点位”的那个动作里跳转完成页；普通加载不自动跳，
-    // 否则用户一点进页面就被带到完成页，看起来像“默认都学完了”。
-    if (p.allDone && state.justCompleted) {
-      state.justCompleted = false;
-      setTimeout(function () { showFinish(p); }, 260);
+  }
+
+  function startChat() {
+    $('#chatLog').innerHTML = '';
+    $('#chatInputBox').classList.add('hidden');
+    $('#chatGen').classList.add('hidden');
+    bubble('你好，我是延小讲。先问一句：你是以什么身份来延安的？', 'ai');
+    optButtons(IDENTS, function (k, label) {
+      state.identity = k;
+      bubble(label, 'me');
+      if (k === 'student') {
+        bubble('在读哪个学段？我按学段给你配任务。', 'ai');
+        optButtons(STAGES, function (sk, sl) {
+          state.stage = sk;
+          bubble(sl, 'me');
+          askInterest();
+        });
+      } else {
+        askInterest();
+      }
+    });
+  }
+
+  function askInterest() {
+    bubble('这趟最想带走什么？', 'ai');
+    optButtons(INTERESTS, function (k, label) {
+      state.interest = k;
+      bubble(label, 'me');
+      askDuration();
+    });
+  }
+
+  function askDuration() {
+    bubble('大概能安排多长时间？', 'ai');
+    optButtons(DURATIONS, function (k, label) {
+      state.duration = k;
+      bubble(label, 'me');
+      askNote();
+    });
+  }
+
+  function askNote() {
+    bubble('还有什么想说的？（可以直接跳过，我这就排线路）', 'ai');
+    $('#chatOpts').innerHTML = '';
+    $('#chatInputBox').classList.remove('hidden');
+    $('#chatGen').classList.remove('hidden');
+  }
+
+  /* ---------------- 二、任务 + 线路 ---------------- */
+  function buildPlan() {
+    var btn = $('#chatGen');
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    bubble('好，我去查资料，给你排一条线路……', 'ai');
+    api('/api/plan', {
+      identity: state.identity, stage: state.stage,
+      interest: state.interest || 'history', duration: state.duration, note: state.note
+    }).then(function (j) {
+      if (btn) btn.disabled = false;
+      if (!j || !j.ok) { toast('线路生成失败，请重试'); return; }
+      state.plan = j;
+      state.route = j.route || [];
+      state.routeIdx = 0;
+      if (j.progress) renderProgress(j.progress);
+      renderPlan(j);
+      show('stepPlan');
+    }).catch(function () {
+      if (btn) btn.disabled = false;
+      toast('网络异常，请重试');
+    });
+  }
+
+  function renderPlan(j) {
+    $('#planLabel').textContent = j.label || '主题线路';
+    $('#planTitle').textContent = j.title || '';
+    $('#planIntro').textContent = j.intro || '';
+    $('#taskSummary').textContent = (j.task && j.task.summary) || '';
+    $('#routeCount').textContent = '(' + state.route.length + ' 个点位)';
+
+    renderGallery(j.images || [], j.webImages || []);
+    renderWebBrief(j.webBrief || []);
+
+    var list = $('#routeList');
+    list.innerHTML = '';
+    state.route.forEach(function (r, i) {
+      var d = document.createElement('div');
+      d.className = 'route-item';
+      var mins = r.minutes ? r.minutes + ' 分钟' : '';
+      d.innerHTML = '<span class="route-no">' + r.order + '</span>' +
+        '<div class="route-main"><div class="route-name">' + r.name +
+        '<span class="route-lv">' + r.level + '</span></div>' +
+        '<div class="route-why">' + r.why + '</div></div>' +
+        '<span class="route-min">' + mins + '</span>';
+      d.onclick = function () { openSite(r.siteId, i); };
+      list.appendChild(d);
+    });
+  }
+
+  function renderWebBrief(items) {
+    var box = $('#webBrief');
+    if (!box) return;
+    if (!items.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    var head = document.createElement('div');
+    head.className = 'wb-head';
+    head.textContent = '刚刚联网查到的最新相关信息';
+    box.appendChild(head);
+    items.forEach(function (x) {
+      var row = document.createElement('a');
+      row.className = 'wb-row';
+      row.href = x.url || '#';
+      row.target = '_blank';
+      row.rel = 'noopener';
+      row.innerHTML = '<span class=wb-title>' + (x.title || '') + '</span>' +
+        '<span class=wb-site>' + (x.site || '') + (x.date ? ' · ' + x.date : '') + '</span>';
+      box.appendChild(row);
+    });
+  }
+
+  /* ---------------- 动态图片带 ---------------- */
+  var galleryTimer = null;
+  var galleryIdx = 0;
+
+  function renderGallery(local, web) {
+    var g = $('#gallery');
+    if (!g) return;
+    g.innerHTML = '';
+    clearInterval(galleryTimer);
+    var items = [];
+    (local || []).forEach(function (x) {
+      var meta = (window.RED_IMAGES || {})[x.local];
+      if (meta && meta.file) items.push({ src: meta.file, alt: x.name, credit: x.credit || '' });
+    });
+    (web || []).forEach(function (x) {
+      if (x.url) items.push({ src: x.url, alt: x.alt || '延安', credit: x.credit || '图源：网络' });
+    });
+    if (!items.length) { g.classList.add('hidden'); return; }
+    g.classList.remove('hidden');
+
+    var track = document.createElement('div');
+    track.className = 'gallery-track';
+    items.forEach(function (it) {
+      var fig = document.createElement('figure');
+      fig.className = 'gallery-item';
+      var img = document.createElement('img');
+      img.src = it.src; img.alt = it.alt; img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      img.onerror = function () { fig.classList.add('broken'); };
+      fig.appendChild(img);
+      if (it.credit) {
+        var cap = document.createElement('figcaption');
+        cap.textContent = it.credit;
+        fig.appendChild(cap);
+      }
+      track.appendChild(fig);
+    });
+    g.appendChild(track);
+
+    galleryIdx = 0;
+    track.style.transform = 'translateX(0)';
+    if (items.length > 2) {
+      galleryTimer = setInterval(function () {
+        var first = track.firstChild;
+        var w = first ? first.offsetWidth + 10 : 220;
+        var maxShift = Math.max(0, items.length - 2);
+        galleryIdx = galleryIdx >= maxShift ? 0 : galleryIdx + 1;
+        track.style.transform = 'translateX(' + (-galleryIdx * w) + 'px)';
+      }, 3200);
     }
   }
 
-  function openSite(sid) {
+  /* ---------------- 三、点位讲解 ---------------- */
+  function openSite(sid, idx) {
+    if (typeof idx === 'number') state.routeIdx = idx;
     api('/api/site', { site: sid }).then(function (j) {
       if (!j || !j.ok) { toast('点位不存在'); return; }
       state.site = j.site;
       state.sites = j.sites;
-      state.progress = j.progress;
       renderProgress(j.progress);
       $('#siteName').textContent = j.site.name;
       $('#introNo').textContent = j.site.no < 10 ? '0' + j.site.no : j.site.no;
@@ -84,37 +261,15 @@
     });
   }
 
-  function bindOpts() {
-    var io = $('#identOpts'), so = $('#stageOpts');
-    Object.keys(IDENTS).forEach(function (k) {
-      var b = document.createElement('button');
-      b.className = 'opt' + (k === state.identity ? ' on' : '');
-      b.textContent = IDENTS[k];
-      b.dataset.k = k;
-      b.onclick = function () {
-        state.identity = k;
-        [].forEach.call(io.children, function (x) { x.classList.toggle('on', x === b); });
-        $('#stageLabel').classList.toggle('hidden', k === 'party');
-        so.classList.toggle('hidden', k === 'party');
-      };
-      io.appendChild(b);
-    });
-    Object.keys(STAGES).forEach(function (k) {
-      var b = document.createElement('button');
-      b.className = 'opt' + (k === state.stage ? ' on' : '');
-      b.textContent = STAGES[k];
-      b.dataset.k = k;
-      b.onclick = function () {
-        state.stage = k;
-        [].forEach.call(so.children, function (x) { x.classList.toggle('on', x === b); });
-      };
-      so.appendChild(b);
-    });
+  function renderProgress(p) {
+    if (!p) return;
+    state.progress = p;
+    $('#progFill').style.width = p.percent + '%';
+    $('#progTxt').textContent = p.done + '/' + p.total;
   }
 
-
-  /* ---------------- 电子导览：分段播放 ---------------- */
-  var tourState = { list: [], i: 0, timer: null, speaking: false };
+  /* ---------------- 电子导览 ---------------- */
+  var tourState = { list: [], i: 0, speaking: false };
 
   function stopSpeak() {
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
@@ -126,8 +281,7 @@
     try {
       window.speechSynthesis.cancel();
       var u = new SpeechSynthesisUtterance(text);
-      u.lang = 'zh-CN';
-      u.rate = 0.95;
+      u.lang = 'zh-CN'; u.rate = 0.95;
       u.onend = function () { tourState.speaking = false; syncSpeakBtn(); };
       window.speechSynthesis.speak(u);
       tourState.speaking = true;
@@ -141,32 +295,25 @@
   }
 
   function renderTour(tour) {
-    tourState.list = tour;
-    tourState.i = 0;
+    tourState.list = tour; tourState.i = 0;
     var box = $('#partyScript');
     box.innerHTML = '';
-
     var head = document.createElement('div');
     head.className = 'tour-head';
-    head.innerHTML = '<span class="tour-badge">电子导览</span>' +
-      '<span class="tour-count" id="tourCount"></span>';
+    head.innerHTML = '<span class="tour-badge">电子导览</span><span class="tour-count" id="tourCount"></span>';
     box.appendChild(head);
-
     var body = document.createElement('div');
-    body.className = 'tour-body';
-    body.id = 'tourBody';
+    body.className = 'tour-body'; body.id = 'tourBody';
     box.appendChild(body);
-
     var bar = document.createElement('div');
     bar.className = 'tour-bar';
     bar.innerHTML = '<button class="tour-btn" id="tourPrev">上一段</button>' +
       '<button class="tour-btn main" id="tourSpeak">▶ 朗读本段</button>' +
       '<button class="tour-btn" id="tourNext">下一段</button>';
     box.appendChild(bar);
-
     var tip = document.createElement('div');
     tip.className = 'tour-tip';
-    tip.textContent = '跟读或默读都可以；听完再点「领判断题」。';
+    tip.textContent = '可点「朗读本段」听语音讲解，也可直接读文字。';
     box.appendChild(tip);
 
     $('#tourPrev').onclick = function () { goTour(-1); };
@@ -182,7 +329,7 @@
   function goTour(d) {
     var n = tourState.i + d;
     if (n < 0) { toast('已经是第一段'); return; }
-    if (n >= tourState.list.length) { toast('导览已结束，可以领判断题了'); return; }
+    if (n >= tourState.list.length) { toast('导览已结束，可以答判断题了'); return; }
     showTourSegment(n, tourState.speaking);
   }
 
@@ -204,9 +351,9 @@
     if (autoSpeak === true) speak(seg[0] + '。' + seg[1]);
   }
 
+  /* ---------------- 四、任务 ---------------- */
   function renderTask(task) {
     state.task = task;
-    // 渲染任何一处出错，都不能让下面的按钮失去绑定（这是线上踩过的坑）
     try { renderTaskInner(task); } catch (e) {
       if (window.console && console.error) console.error('renderTask', e);
       toast('页面渲染异常，已降级显示');
@@ -217,7 +364,7 @@
   function renderTaskInner(task) {
     $('#taskKind').textContent = task.kind;
     $('#taskHint').textContent = task.mode === 'party'
-      ? '电子讲解 + 判断题' : '可交选择题 / 文本 / 图片';
+      ? '电子导览 + 判断题' : '可交选择题 / 文本 / 图片';
     var script = $('#partyScript');
     if (task.mode === 'party' && task.tour && task.tour.length) {
       script.classList.remove('hidden');
@@ -243,7 +390,6 @@
           b.textContent = o;
           b.onclick = function () {
             [].forEach.call(opts.children, function (x) { x.classList.toggle('on', x === b); });
-            b.dataset.sel = '1';
             opts.dataset.picked = String(oi);
           };
           opts.appendChild(b);
@@ -271,7 +417,6 @@
       box2.appendChild(opts2);
       qc.appendChild(box2);
     }
-    // 党员分支没有 allow 字段：用容错写法，避免整段渲染被异常打断
     var allow = task.allow || (task.mode === 'party' ? [] : ['choice']);
     $('#textAreaBox').classList.toggle('hidden', allow.indexOf('text') < 0);
     $('#taskErr').textContent = '';
@@ -306,17 +451,21 @@
     api('/api/submit', body).then(function (j) {
       $('#submitBtn').disabled = false;
       if (!j || !j.ok) { $('#taskErr').textContent = '提交失败，请重试'; return; }
-      state.progress = j.progress;
       renderProgress(j.progress);
       var r = j.result;
+      var last = state.routeIdx >= state.route.length - 1;
       $('#fbTitle').textContent = r.ok ? '这一站完成 ✓' : '还需要再想想';
       $('#fbBody').textContent = r.feedback + (r.guide ? '\n\n' + r.guide : '');
       $('#retryBtn').classList.toggle('hidden', r.ok);
       $('#continueBtn').classList.toggle('hidden', !r.ok);
+      $('#continueBtn').textContent = last ? '完成线路' : '下一个点位';
       show('stepFeedback');
-      if (r.ok && j.progress.allDone) {
+      if (r.ok) {
         state.justCompleted = true;
-        state.afterFinish = function () { showFinish(j.progress); };
+        state.afterFinish = function () {
+          if (j.progress.allDone || last) showFinish(j.progress);
+          else openSite(state.route[state.routeIdx + 1].siteId, state.routeIdx + 1);
+        };
       }
     }).catch(function () {
       $('#submitBtn').disabled = false;
@@ -325,9 +474,10 @@
   }
 
   function showFinish(p) {
-    var done = p.sites.filter(function (s) { return s.done; });
+    var done = (p.sites || []).filter(function (s) { return s.done; });
     var avg = done.reduce(function (a, s) { return a + (s.score || 0); }, 0) / Math.max(1, done.length);
-    $('#finishSub').textContent = '你完成了全部 ' + p.total + ' 个展览点位，平均得分 ' + Math.round(avg) + ' 分。';
+    $('#finishSub').textContent = '已完成 ' + (p.done || done.length) + '/' + (p.total || 6) +
+      ' 个点位，平均得分 ' + Math.round(avg) + ' 分。';
     var stats = $('#finishStats');
     stats.innerHTML = '';
     done.forEach(function (s) {
@@ -340,12 +490,38 @@
   }
 
   /* ---------------- 纪念卡 ---------------- */
+  var lastName = '';
+
+  function signerName() {
+    var v = '';
+    try { v = localStorage.getItem('hy_signer') || ''; } catch (e) {}
+    var el = $('#memName');
+    if (el && el.value.trim()) v = el.value.trim();
+    return (v || '').trim().slice(0, 12);
+  }
+
   function openMemorial(siteId) {
-    api('/api/memorial', { site: siteId || '' }).then(function (j) {
+    api('/api/memorial', { site: siteId || '', name: signerName() }).then(function (j) {
       if (!j || !j.ok) return;
+      lastName = j.card;
+      var el = $('#memName');
+      if (el) {
+        el.value = signerName();
+        if (!el.value) setTimeout(function () { try { el.focus(); } catch (e) {} }, 260);
+      }
       drawMemorial(j.card);
       $('#memMask').classList.remove('hidden');
     });
+  }
+
+  function refreshMemorialName() {
+    var name = signerName();
+    try { localStorage.setItem('hy_signer', name); } catch (e) {}
+    if (!lastName) return;
+    var card = {};
+    for (var k in lastName) card[k] = lastName[k];
+    card.user = name;
+    drawMemorial(card);
   }
 
   function drawMemorial(c) {
@@ -357,7 +533,6 @@
     grad.addColorStop(0, '#8C1F28'); grad.addColorStop(1, '#6B1219');
     g.fillStyle = grad; g.fillRect(0, 0, W, 320);
     g.fillStyle = '#B0863A'; g.fillRect(0, 320, W, 4);
-
     g.fillStyle = '#fff';
     g.font = '700 66px "Songti SC",serif';
     g.fillText(c.title, 80, 140);
@@ -370,69 +545,87 @@
 
     g.fillStyle = '#211A17';
     g.font = '700 42px "Songti SC",serif';
-    var line = c.line;
-    var y = 420;
-    for (var i = 0; i < line.length; i += 16) {
-      g.fillText(line.slice(i, i + 16), 80, y);
-      y += 58;
-    }
+    var y = 420, line = c.line;
+    for (var i = 0; i < line.length; i += 16) { g.fillText(line.slice(i, i + 16), 80, y); y += 58; }
     y += 20;
-
-    // 进度条
-    g.fillStyle = '#E7DCD3';
-    g.fillRect(80, y, W - 160, 26);
-    g.fillStyle = '#8C1F28';
-    g.fillRect(80, y, (W - 160) * (c.percent / 100), 26);
-    g.fillStyle = '#8C1F28';
+    g.fillStyle = '#E7DCD3'; g.fillRect(80, y, W - 160, 26);
+    g.fillStyle = '#8C1F28'; g.fillRect(80, y, (W - 160) * (c.percent / 100), 26);
     g.font = '700 30px "PingFang SC",sans-serif';
     g.fillText(c.done + ' / ' + c.total + ' 个点位完成', 80, y + 76);
     y += 130;
-
     g.fillStyle = '#6E625C';
     g.font = '400 26px "PingFang SC",sans-serif';
     var det = c.detail;
-    for (var j = 0; j < det.length; j += 20) {
-      g.fillText(det.slice(j, j + 20), 80, y);
-      y += 40;
+    for (var j = 0; j < det.length; j += 20) { g.fillText(det.slice(j, j + 20), 80, y); y += 40; }
+    var sign = (c.user || '').trim();
+    g.textAlign = 'right';
+    if (sign) {
+      g.fillStyle = '#8C1F28';
+      g.font = '700 34px "Songti SC",serif';
+      g.fillText('—— ' + sign, W - 80, H - 190);
+    } else {
+      g.fillStyle = '#C4B8AE';
+      g.font = '400 24px "PingFang SC",sans-serif';
+      g.fillText('（在上方填上你的名字）', W - 80, H - 190);
     }
-
+    g.textAlign = 'left';
     g.fillStyle = '#A6978E';
     g.font = '400 22px "PingFang SC",sans-serif';
-    g.fillText('账号：' + c.user + ' · 生成于 ' + new Date().toLocaleDateString('zh-CN'), 80, H - 150);
+    g.fillText('红迹·延安 · ' + new Date().toLocaleDateString('zh-CN'), 80, H - 150);
     g.fillText('扫码继续参观', 80, H - 100);
   }
 
+  /* ---------------- 绑定 ---------------- */
   function bind() {
-    if (state.sites.length === 0) {
-      api('/api/progress', {}).then(function (j) {
-        if (!j || !j.ok) return;
-        state.sites = j.sites;
-        renderProgress(j.progress);
-        var q = new URLSearchParams(location.search).get('site');
-        if (q) openSite(q);
-      });
-    }
-    $('#toIdentity').onclick = function () { show('stepIdentity'); };
-    $('#toTask').onclick = function () {
+    startChat();
+    api('/api/progress', {}).then(function (j) {
+      if (j && j.ok) { state.sites = j.sites || []; renderProgress(j.progress); }
+    });
+
+    $('#chatSend').onclick = function () {
+      state.note = $('#chatInput').value.trim();
+      if (state.note) bubble(state.note, 'me');
+      buildPlan();
+    };
+    $('#chatInput').onkeydown = function (e) {
+      if (e.key === 'Enter') $('#chatSend').click();
+    };
+    $('#chatGen').onclick = function () {
+      state.note = $('#chatInput').value.trim();
+      if (state.note) bubble(state.note, 'me');
+      buildPlan();
+    };
+    $('#startRoute').onclick = function () {
+      if (!state.route.length) { toast('线路为空'); return; }
+      openSite(state.route[0].siteId, 0);
+    };
+    $('#reChat').onclick = function () { show('stepChat'); startChat(); };
+    $('#toTask2').onclick = function () {
       api('/api/task', { site: state.site.id, identity: state.identity, stage: state.stage })
         .then(function (j) {
           if (!j || !j.ok) { toast('任务下发失败'); return; }
           renderTask(j.task);
         });
     };
+    $('#backPlan').onclick = function () { show('stepPlan'); };
     $('#submitBtn').onclick = submit;
     $('#retryBtn').onclick = function () { show('stepTask'); };
     $('#continueBtn').onclick = function () {
-      if (state.afterFinish) { state.afterFinish(); state.afterFinish = null; }
-      else show('stepPick');
+      if (state.afterFinish) { var f = state.afterFinish; state.afterFinish = null; f(); }
+      else show('stepPlan');
     };
     $('#cardBtn').onclick = function () { openMemorial(''); };
     $('#finalCardBtn').onclick = function () { openMemorial(''); };
+    var nameEl = $('#memName');
+    if (nameEl) {
+      nameEl.addEventListener('input', refreshMemorialName);
+      nameEl.addEventListener('change', refreshMemorialName);
+      try { nameEl.value = localStorage.getItem('hy_signer') || ''; } catch (e) {}
+    }
     $('#memClose').onclick = function () { $('#memMask').classList.add('hidden'); };
     $('#memMask').onclick = function (e) { if (e.target === this) this.classList.add('hidden'); };
     $('#memSave').onclick = function () {
-      var cv = $('#memCanvas');
-      cv.toBlob(function (blob) {
+      $('#memCanvas').toBlob(function (blob) {
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = '红迹延安-学习纪念卡.png';
@@ -450,8 +643,16 @@
       };
       rd.readAsDataURL(f);
     });
+
+    // 扫码直达某点位（?site=P2）：跳过对话，直接进该点位
+    var q = new URLSearchParams(location.search).get('site');
+    if (q) {
+      state.route = [{ siteId: q, name: '', why: '', order: 1, level: '' }];
+      state.routeIdx = 0;
+      state.identity = 'public';
+      openSite(q, 0);
+    }
   }
 
-  bindOpts();
   bind();
 })();
