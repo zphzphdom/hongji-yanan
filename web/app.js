@@ -107,16 +107,14 @@
       });
     }
     // 先图后文：图片能立刻给出讲的是哪个点，正文随后出
-    // 只显示联网搜到的图；没有就不配图，不回落到本地图库
-    if (r.imageUrl) {
-      b.appendChild(imageBlock({
-        src: r.imageUrl,
-        alt: r.imageAlt || '',
-        credit: r.imageCredit || '图源：网络',
-        fallback: ''
-      }));
-    }
+    // 先出文字，再异步补一张联网图（不阻塞回答）
     b.appendChild(a);
+    if (r.imageUrl) {
+      b.appendChild(imageBlock({ src: r.imageUrl, alt: r.imageAlt || '',
+                                 credit: r.imageCredit || '图源：网络', fallback: '' }));
+    } else if (r.imageKeys && r.imageKeys.length) {
+      attachWebImage(b, r.imageKeys);
+    }
 
     if (r.sources && r.sources.length) {
       var row = el('div', 'src-row');
@@ -185,19 +183,14 @@
       if (j && j.ok) {
         render(j);
       } else {
-        // 服务端不可用时才退回本地引擎，保证"永远答得出来"
-        var r;
-        try { r = E.ask(idx, text, mode); } catch (e) { r = { refused: true, text: '服务暂不可用，请稍后重试。', sources: [] }; }
-        if (!r.image) r.image = '宝塔山';
-        r.degraded = true;
-        render(r);
+        // 不再用本地知识库作答：服务端不可用时直接提示，避免"答案看起来一样"
+        render({ refused: true, degraded: true, sources: [], web: [],
+                 text: '联网服务暂时不可用（' + ((j && j.error) || '未知错误') + '），请稍后重试。' });
+        return;
       }
     }).catch(function () {
-      var r;
-      try { r = E.ask(idx, text, mode); } catch (e) { r = { refused: true, text: '网络异常，请重试。', sources: [] }; }
-      if (!r.image) r.image = '宝塔山';
-      r.degraded = true;
-      render(r);
+      render({ refused: true, degraded: true, sources: [], web: [],
+               text: '网络异常，暂时无法联网生成，请稍后重试。' });
     });
   }
 
@@ -227,6 +220,19 @@
   /* ---------------- 配图（本地图 / 联网图都用同一结构） ---------------- */
   function imageSrc(meta) {
     return meta.src || meta.file;
+  }
+
+  // 异步补图：请求 /api/img，成功就把图插到这条回答里
+  function attachWebImage(container, keys) {
+    var holder = el('div', 'img-pending');
+    holder.textContent = '正在从网上找相关图片…';
+    container.appendChild(holder);
+    api('/api/img', { keys: keys }).then(function (j) {
+      if (!j || !j.ok || !j.url) { holder.remove(); return; }
+      var pic = imageBlock({ src: j.url, alt: j.alt || '', credit: j.credit || '图源：网络',
+                             fallback: '' });
+      container.replaceChild(pic, holder);
+    }).catch(function () { holder.remove(); });
   }
 
   function imageBlock(meta) {
