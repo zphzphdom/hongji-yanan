@@ -104,6 +104,14 @@
     });
   }
 
+  function clearInput() {
+    var input = $('#chatInput');
+    if (!input) return;
+    input.value = '';
+    input.removeAttribute('inputmode');
+    input.placeholder = '比如：想带孩子看南泥湾，半天时间';
+  }
+
   function askDays() {
     bubble('打算玩几天？（1—7 天，直接填数字）', 'ai');
     var box = $('#chatOpts');
@@ -127,6 +135,7 @@
     state.days = v;
     bubble(v + ' 天', 'me');
     $('#chatOpts').innerHTML = '';
+    clearInput();                            // 发送后清空，避免沿用到下一问
     $('#chatInputBox').classList.add('hidden');
     var go = $('#chatGen');
     go.classList.add('hidden');
@@ -142,8 +151,26 @@
   function askNote() {
     bubble('还有什么想说的？（可以直接跳过，我这就排线路）', 'ai');
     $('#chatOpts').innerHTML = '';
+    clearInput();
     $('#chatInputBox').classList.remove('hidden');
-    $('#chatGen').classList.remove('hidden');
+    var go = $('#chatGen');
+    go.classList.remove('hidden');
+    go.textContent = '跳过并生成线路';
+    go.disabled = false;
+    go.onclick = function () { sendNote(); };
+  }
+
+  function sendNote() {
+    var input = $('#chatInput');
+    if (!input) return;
+    var v = (input.value || '').trim();
+    state.note = v;
+    if (v) bubble(v, 'me');
+    clearInput();
+    $('#chatInputBox').classList.add('hidden');
+    var go = $('#chatGen');
+    if (go) go.classList.add('hidden');
+    buildPlan();
   }
 
   /* ---------------- 二、任务 + 线路 ---------------- */
@@ -615,18 +642,9 @@
       if (j && j.ok) { state.sites = j.sites || []; renderProgress(j.progress); }
     });
 
-    $('#chatSend').onclick = function () {
-      state.note = $('#chatInput').value.trim();
-      if (state.note) bubble(state.note, 'me');
-      buildPlan();
-    };
+    $('#chatSend').onclick = function () { sendNote(); };
     $('#chatInput').onkeydown = function (e) {
-      if (e.key === 'Enter') $('#chatSend').click();
-    };
-    $('#chatGen').onclick = function () {
-      state.note = $('#chatInput').value.trim();
-      if (state.note) bubble(state.note, 'me');
-      buildPlan();
+      if (e.key === 'Enter') { e.preventDefault(); sendNote(); }
     };
     $('#startRoute').onclick = function () {
       if (!state.route.length) { toast('线路为空'); return; }
