@@ -113,7 +113,7 @@
       b.appendChild(imageBlock({ src: r.imageUrl, alt: r.imageAlt || '',
                                  credit: r.imageCredit || '图源：网络', fallback: '' }));
     } else if (r.imageKeys && r.imageKeys.length) {
-      attachWebImage(b, r.imageKeys);
+      attachWebImage(b, r.imageKeys, ((r.text || '') + ' ' + (r.question || question || '')).slice(0, 300));
     }
 
     if (r.sources && r.sources.length) {
@@ -223,11 +223,11 @@
   }
 
   // 异步补图：请求 /api/img，成功就把图插到这条回答里
-  function attachWebImage(container, keys) {
+  function attachWebImage(container, keys, ctx) {
     var holder = el('div', 'img-pending');
     holder.textContent = '正在从网上找相关图片…';
     container.appendChild(holder);
-    api('/api/img', { keys: keys }).then(function (j) {
+    api('/api/img', { keys: keys, context: ctx || '' }).then(function (j) {
       if (!j || !j.ok || !j.url) { holder.remove(); return; }
       var pic = imageBlock({ src: j.url, alt: j.alt || '', credit: j.credit || '图源：网络',
                              fallback: '' });
