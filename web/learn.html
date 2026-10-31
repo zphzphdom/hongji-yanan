@@ -54,6 +54,20 @@
       <div class="route-title">主题线路 <span class="muted" id="routeCount"></span></div>
       <div class="route" id="routeList"></div>
 
+      <div class="refine">
+        <label for="refineNote">还想加点什么要求？（比如「多安排自然风光」「不要爬山」「只要免费的」）</label>
+        <div class="refine-row">
+          <input id="refineNote" type="text" maxlength="60" placeholder="补充一句，我按新要求重排">
+          <button class="chat-send" id="refineBtn">重排</button>
+        </div>
+        <div class="refine-tags">
+          <button class="tag" data-tag="多安排自然风光">多安排自然风光</button>
+          <button class="tag" data-tag="不要爬山">不要爬山</button>
+          <button class="tag" data-tag="只要免费的点位">只要免费</button>
+          <button class="tag" data-tag="多留时间给纪念馆">多留纪念馆</button>
+        </div>
+      </div>
+
       <button class="btn-primary" id="startRoute">从第一个点位开始</button>
       <button class="btn ghost" id="reChat">重新说说需求</button>
     </section>
@@ -116,6 +130,12 @@
       <button class="btn ghost" id="memClose">关闭</button>
     </div>
   </div>
+</div>
+
+<div class="zoom-mask hidden" id="zoomMask">
+  <button class="zoom-close" id="zoomClose">✕ 关闭</button>
+  <img id="zoomImg" alt="">
+  <div class="zoom-cap" id="zoomCap"></div>
 </div>
 
 <div class="toast" id="toast"></div>
