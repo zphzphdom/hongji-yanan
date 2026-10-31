@@ -77,7 +77,6 @@
   function startChat() {
     $('#chatLog').innerHTML = '';
     $('#chatInputBox').classList.add('hidden');
-    $('#chatGen').classList.add('hidden');
     bubble('你好，我是延小讲。先问一句：你是以什么身份来延安的？', 'ai');
     optButtons(IDENTS, function (k, label) {
       state.identity = k;
@@ -121,11 +120,12 @@
     input.value = String(state.days || 1);
     input.setAttribute('inputmode', 'numeric');
     input.placeholder = '比如 2';
-    var go = $('#chatGen');
-    go.classList.remove('hidden');
-    go.textContent = '就是这么多天';
-    go.onclick = function () { confirmDays(); };
-    input.onkeydown = function (e) { if (e.key === 'Enter') confirmDays(); };
+    var send = $('#chatSend');
+    send.textContent = '确定';
+    send.onclick = function () { confirmDays(); };
+    input.onkeydown = function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); confirmDays(); }
+    };
   }
 
   function confirmDays() {
@@ -137,14 +137,6 @@
     $('#chatOpts').innerHTML = '';
     clearInput();                            // 发送后清空，避免沿用到下一问
     $('#chatInputBox').classList.add('hidden');
-    var go = $('#chatGen');
-    go.classList.add('hidden');
-    go.textContent = '生成我的线路';
-    go.onclick = function () {
-      state.note = $('#chatInput').value.trim();
-      if (state.note) bubble(state.note, 'me');
-      buildPlan();
-    };
     askNote();
   }
 
@@ -153,11 +145,9 @@
     $('#chatOpts').innerHTML = '';
     clearInput();
     $('#chatInputBox').classList.remove('hidden');
-    var go = $('#chatGen');
-    go.classList.remove('hidden');
-    go.textContent = '跳过并生成线路';
-    go.disabled = false;
-    go.onclick = function () { sendNote(); };
+    var send = $('#chatSend');
+    send.textContent = '发送';
+    send.onclick = function () { sendNote(); };
   }
 
   function sendNote() {
@@ -168,22 +158,19 @@
     if (v) bubble(v, 'me');
     clearInput();
     $('#chatInputBox').classList.add('hidden');
-    var go = $('#chatGen');
-    if (go) go.classList.add('hidden');
     buildPlan();
   }
 
   /* ---------------- 二、任务 + 线路 ---------------- */
   function buildPlan() {
-    var btn = $('#chatGen');
-    if (btn && btn.disabled) return;
-    if (btn) btn.disabled = true;
+    if (state._planning) return;
+    state._planning = true;
     bubble('好，我去查资料，给你排一条线路……', 'ai');
     api('/api/plan', {
       identity: state.identity, stage: state.stage,
       interest: state.interest || 'history', days: state.days, note: state.note
     }).then(function (j) {
-      if (btn) btn.disabled = false;
+      state._planning = false;
       if (!j || !j.ok) { toast('线路生成失败，请重试'); return; }
       state.plan = j;
       state.route = j.route || [];
@@ -193,7 +180,7 @@
       renderPlan(j);
       show('stepPlan');
     }).catch(function () {
-      if (btn) btn.disabled = false;
+      state._planning = false;
       toast('网络异常，请重试');
     });
   }
@@ -458,26 +445,48 @@
       });
     } else {
       var q = task.question;
+      var ttype = task.taskType || q.type || 'choice';
       var box2 = document.createElement('div');
       box2.className = 'q-block';
-      box2.innerHTML = '<div class="q-title">' + task.prompt + '</div>';
-      var opts2 = document.createElement('div');
-      opts2.className = 'q-opts';
-      q.options.forEach(function (o, oi) {
-        var b = document.createElement('button');
-        b.className = 'q-opt';
-        b.textContent = o;
-        b.onclick = function () {
-          [].forEach.call(opts2.children, function (x) { x.classList.toggle('on', x === b); });
-          opts2.dataset.picked = String(oi);
-        };
-        opts2.appendChild(b);
-      });
-      box2.appendChild(opts2);
+      box2.innerHTML = '<div class="q-title">' + task.prompt + '</div>' +
+        '<div class="q-text">' + q.q + '</div>';
+      if (ttype === 'choice') {
+        var opts2 = document.createElement('div');
+        opts2.className = 'q-opts';
+        (q.options || []).forEach(function (o, oi) {
+          var b = document.createElement('button');
+          b.className = 'q-opt';
+          b.textContent = o;
+          b.onclick = function () {
+            [].forEach.call(opts2.children, function (x) { x.classList.toggle('on', x === b); });
+            opts2.dataset.picked = String(oi);
+          };
+          opts2.appendChild(b);
+        });
+        box2.appendChild(opts2);
+      } else {
+        var hint = document.createElement('div');
+        hint.className = 'q-kind-hint';
+        hint.textContent = ttype === 'photo'
+          ? '这一题：上传一张现场照片 + 一句说明'
+          : '这一题：用文字写下你的观察（写到年份或数字更好）';
+        box2.appendChild(hint);
+      }
       qc.appendChild(box2);
     }
+    var ttype = task.taskType || (task.question && task.question.type) || 'choice';
     var allow = task.allow || (task.mode === 'party' ? [] : ['choice']);
-    $('#textAreaBox').classList.toggle('hidden', allow.indexOf('text') < 0);
+    // 文本/照片题才显示输入区；照片题必须上传图
+    var showInput = task.mode !== 'party' && (ttype === 'text' || ttype === 'photo');
+    $('#textAreaBox').classList.toggle('hidden', !showInput);
+    var ta = $('#textAns');
+    if (ta) {
+      ta.placeholder = ttype === 'photo'
+        ? '补一句说明：照片里是什么、写了什么字'
+        : '写下你在展板上看到的细节、年份或数字……';
+    }
+    var up = $('#imgFile');
+    if (up && up.parentNode) up.parentNode.classList.toggle('hidden', ttype !== 'photo');
     $('#taskErr').textContent = '';
     show('stepTask');
   }
@@ -495,12 +504,22 @@
       out.choice = picks;
       return out;
     }
-    var opts = document.querySelector('#questionCard .q-opts');
-    if (opts && opts.dataset.picked !== undefined) out.choice = [Number(opts.dataset.picked)];
+    var ttype = state.task.taskType || (state.task.question && state.task.question.type) || 'choice';
+    if (ttype === 'choice') {
+      var opts = document.querySelector('#questionCard .q-opts');
+      if (!opts || opts.dataset.picked === undefined) return { err: '请先选择一个答案' };
+      out.choice = [Number(opts.dataset.picked)];
+      return out;
+    }
     var ta = $('#textAns');
     if (ta && ta.value.trim()) out.text = ta.value.trim();
     if (state.lastImage) out.image = state.lastImage;
-    if (!out.choice && !out.text && !out.image) return { err: '请至少选择或填写一项' };
+    if (ttype === 'photo') {
+      if (!out.image) return { err: '这一题需要上传一张现场照片' };
+      if (!out.text) return { err: '照片配一句说明再提交' };
+      return out;
+    }
+    if (!out.text) return { err: '请写下你的观察再提交' };
     return out;
   }
 
@@ -513,6 +532,9 @@
       if (!j || !j.ok) { $('#taskErr').textContent = '提交失败，请重试'; return; }
       renderProgress(j.progress);
       var r = j.result;
+      state.lastImage = null;
+      var ta2 = $('#textAns'); if (ta2) ta2.value = '';
+      var nm = $('#imgName'); if (nm) nm.textContent = '';
       var last = state.routeIdx >= state.route.length - 1;
       $('#fbTitle').textContent = r.ok ? '这一站完成 ✓' : '还需要再想想';
       $('#fbBody').textContent = r.feedback + (r.guide ? '\n\n' + r.guide : '');
