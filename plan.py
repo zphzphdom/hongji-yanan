@@ -223,11 +223,11 @@ def plan_route(identity, stage, interest, days=1, note=""):
 
 
 OPENERS = [
-    "%s，按你说的 %s 天和「%s」，我排了 %d 个点位，分 %d 天走。",
-    "%s，%s 天、主题「%s」，%d 个点位给你串成了 %d 天。",
-    "%s，我按「%s」这个方向，把 %s 天的行程拆成 %d 个点位，一天一段。",
-    "%s，先定主题「%s」，再看时间 %s 天，最后落到 %d 个点位上。",
-    "%s，给你一条 %s 天的「%s」线：%d 个点位，分 %d 天。",
+    "{who}，按你说的 {days} 天和「{topic}」，我排了 {n} 个点位，分 {days} 天走。",
+    "{who}，{days} 天、主题「{topic}」，{n} 个点位给你串成了 {days} 天。",
+    "{who}，我按「{topic}」这个方向，把 {days} 天的行程拆成 {n} 个点位，一天一段。",
+    "{who}，先定主题「{topic}」，再看时间 {days} 天，最后落到 {n} 个点位上。",
+    "{who}，给你一条 {days} 天的「{topic}」线：{n} 个点位，分 {days} 天。",
 ]
 MIDDLES = [
     "同一天尽量放在同一个县区，少折返。",
@@ -236,11 +236,11 @@ MIDDLES = [
     "先近后远，同一天不跨县。",
     "点位之间留了缓冲，不用赶场。",
 ]
-CLOSERS = [
-    "想调整就说一句，我重排。",
-    "不满意可以点下面的标签换个排法。",
-    "需要加要求，直接写在下面那栏。",
-    "顺序还想要别的侧重，随时说。",
+TITLES = [
+    "{label} · {topic}（{days} 天 · {n} 个点位）",
+    "{label}｜{topic}｜{days} 天 {n} 站",
+    "{label} · {topic} · {days} 日线（{n} 站）",
+    "{label}：{topic} · {days} 天 · {n} 个点位",
 ]
 
 
@@ -257,18 +257,11 @@ def greet(identity, stage, interest, days, note, route, cfg=None):
         label = "主题参观"
     title = "%s · %s（%s 天 · %d 个点位）" % (label, topic, days, len(route))
 
-    # 线路标题也用随机模板，避免每次都一样
-    TITLES = [
-        "%s · %s（%s 天 · %d 个点位）",
-        "%s｜%s｜%s 天 %d 站",
-        "%s · %s · %s 日线（%d 站）",
-        "%s：%s · %s 天 · %d 个点位",
-    ]
+    # 线路标题与开场都用随机模板，避免每次都一样
     import random as _r
-    tpl_t = _r.choice(TITLES)
-    import re as _re
-    n_t = len(_re.findall(r"%[sd]", tpl_t))
-    title = tpl_t % (label, topic, days, len(route))[:n_t]
+    fields = {"label": label, "topic": topic, "days": days, "n": len(route),
+              "who": who}
+    title = _r.choice(TITLES).format(**fields)
 
     names = [x["name"] for x in route[:3]]
     spot_line = "、".join(names) + ("等" if len(route) > 3 else "")
@@ -297,10 +290,7 @@ def greet(identity, stage, interest, days, note, route, cfg=None):
 
     if not intro:
         import random as _r2
-        tpl = _r2.choice(OPENERS)
-        args = (who, days, topic, len(route), days)
-        need = len(_re.findall(r"%[sd]", tpl))
-        intro = (tpl % args[:need]) + _r2.choice(MIDDLES)
+        intro = _r2.choice(OPENERS).format(**fields) + _r2.choice(MIDDLES)
 
     if (note or "").strip():
         intro += "你提到的「%s」也算进去了。" % note.strip()[:16]
