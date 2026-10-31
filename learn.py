@@ -256,7 +256,7 @@ def judge(site, task, choice=None, text=None, image=None, cfg=None):
 # ---------------------------------------------------------------- 纪念卡
 
 
-def memorial_card(user, progress, site=None, cfg=None):
+def memorial_card(user, progress, site=None, cfg=None, signer=""):
     """单点位或全点位纪念卡：返回卡片文案与徽章。"""
     done = [s for s in progress["sites"] if s["done"]]
     if site:
@@ -277,7 +277,7 @@ def memorial_card(user, progress, site=None, cfg=None):
         "done": progress["done"],
         "total": progress["total"],
         "allDone": progress["allDone"],
-        "user": user,
+        "user": (signer or "").strip()[:20],
         "badge": "全线完成" if progress["allDone"] else ("%d/%d" % (progress["done"], progress["total"])),
     }
 
