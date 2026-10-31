@@ -558,13 +558,17 @@
       var ta2 = $('#textAns'); if (ta2) ta2.value = '';
       var nm = $('#imgName'); if (nm) nm.textContent = '';
       var last = state.routeIdx >= state.route.length - 1;
-      $('#fbTitle').textContent = r.ok ? '这一站完成 ✓' : '还需要再想想';
+      // 文本题/照片题一律视为完成（后端也已如此判定）
+      var ttype = (state.task && (state.task.taskType ||
+                   (state.task.question && state.task.question.type))) || 'choice';
+      var done = r.ok || ttype === 'text' || ttype === 'photo';
+      $('#fbTitle').textContent = done ? '这一站完成 ✓' : '还需要再想想';
       $('#fbBody').textContent = (r.feedback || '') + (r.guide ? '\n\n' + r.guide : '');
-      $('#retryBtn').classList.toggle('hidden', r.ok);
-      $('#continueBtn').classList.toggle('hidden', !r.ok);
+      $('#retryBtn').classList.toggle('hidden', done);
+      $('#continueBtn').classList.toggle('hidden', !done);
       $('#continueBtn').textContent = last ? '完成线路' : '下一个点位';
       show('stepFeedback');
-      if (r.ok) {
+      if (done) {
         state.justCompleted = true;
         state.afterFinish = function () {
           if (j.progress.allDone || last) showFinish(j.progress);
