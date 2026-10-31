@@ -5,8 +5,10 @@
 配图全部联网获取，不使用本地图库。
 """
 import os
+import random
 import re
 import threading
+import time
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
@@ -119,7 +121,15 @@ def plan_route(identity, stage, interest, days=1, note=""):
         uniq.append(st)
     pool = uniq
 
-    scored = sorted(pool, key=lambda x: (-_score(x, interest, identity), x["no"]))
+    # 同分点位随机打散：同样条件每次生成不同线路
+    rnd = random.Random()          # 每次调用都是新种子
+    scored = []
+    for st in pool:
+        base = _score(st, interest, identity)
+        jitter = rnd.uniform(0, 2.5)      # 同档内随机，不改变主题方向
+        scored.append((-(base + jitter), rnd.random(), st))
+    scored.sort(key=lambda x: (x[0], x[1]))
+    scored = [x[2] for x in scored]
 
     # 按县区分组，组内按得分排序
     groups = {}
@@ -131,6 +141,22 @@ def plan_route(identity, stage, interest, days=1, note=""):
         return (max(_score(x, interest, identity) for x in lst), len(lst))
 
     counties = sorted(groups, key=lambda c: (-county_strength(c)[0], -county_strength(c)[1]))
+    # 同强度的县区之间随机换序，避免每次都是同一个开始
+    bands, cur_band, cur_key = [], [], None
+    for c in counties:
+        k = county_strength(c)[0]
+        if cur_key is None or k == cur_key:
+            cur_band.append(c)
+        else:
+            bands.append(cur_band)
+            cur_band = [c]
+        cur_key = k
+    if cur_band:
+        bands.append(cur_band)
+    counties = []
+    for band in bands:
+        rnd.shuffle(band)
+        counties.extend(band)
     # 城区优先：宝塔区点位最集中，短行程先排它
     if "宝塔区" in counties:
         counties.remove("宝塔区")
@@ -142,7 +168,12 @@ def plan_route(identity, stage, interest, days=1, note=""):
     def take(c, want):
         nonlocal deep_used
         got = []
-        for x in groups.get(c, []):
+        bucket = [x for x in groups.get(c, []) if x["id"] not in used]
+        # 同档多点位时随机挑，保证每次组合不同
+        head = bucket[:max(want * 2, want)]
+        rnd.shuffle(head)
+        rest = [x for x in bucket if x not in head]
+        for x in head + rest:
             if len(got) >= want:
                 break
             if x["id"] in used:
@@ -248,13 +279,17 @@ def collect_images(route, interest, note="", cfg=None, limit=4):
     cands.append(["延安"])
     cands.append(["延安", "宝塔山"])
 
+    rnd = random.Random()
+    cands = list(cands)
+    rnd.shuffle(cands)                 # 关键词顺序随机 → 图片不同
     web, seen = [], set()
     for kw in cands:
         if not kw or len(web) >= limit:
             continue
         try:
             box = {}
-            th = threading.Thread(target=lambda: box.update(v=S.web_image(kw, timeout=7)))
+            salted = list(kw) + [rnd.choice(("实景", "现场", "照片", "风光"))]
+            th = threading.Thread(target=lambda: box.update(v=S.web_image(salted, timeout=7)))
             th.start()
             th.join(timeout=9)
             hit = box.get("v")
