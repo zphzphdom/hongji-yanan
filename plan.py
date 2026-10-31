@@ -211,15 +211,27 @@ def greet(identity, stage, interest, days, note, route):
 
 
 # ---------------------------------------------------------------- 配图（全部联网）
-GOOD_HOST = ("yanan.gov.cn", "yanews.cn", "cnr.cn", "cnwest.com", "hsw.cn", "people.com.cn",
-             "xinhuanet.com", "gmw.cn", "china.cn", "gov.cn", "sxworker.com", "qinfeng.gov.cn")
+# 可信图源：延安本地媒体与央媒（不含泛 gov.cn，避免抓到外省站点）
+GOOD_HOST = ("yanan.gov.cn", "yanews.cn", "cnr.cn", "cnwest.com", "hsw.cn",
+             "people.com.cn", "xinhuanet.com", "news.cn", "gmw.cn", "china.cn",
+             "qinfeng.gov.cn", "snrtv.com", "sxworker.com", "chinadaily.com.cn",
+             "cri.cn", "sxdaily.com.cn", "sanqin.com", "sohu.com", "163.com",
+             "qq.com", "sina.com.cn", "ifeng.com", "thepaper.cn")
+
+BAD_WORDS = ("logo", "weibo", "weixin", "wechatimg", "qrcode", "banner", "icon",
+             "share", "avatar", "default", "placeholder")
+# 报纸整版扫描图：内容相关但观感差，仅作最后兜底
+NEWSPAPER = re.compile(r"(/page_?\d+\.(?:jpe?g|png)$)|(/mhtml/)", re.I)
 
 
-def _credible(url):
+def _credible(url, strict=True):
+    """strict=True 时排除报纸整版扫描；False 时允许。"""
     if not url:
         return False
     low = url.lower()
-    if any(x in low for x in ("logo", "weibo", "weixin", "qrcode", "banner", "icon")):
+    if any(x in low for x in BAD_WORDS):
+        return False
+    if strict and NEWSPAPER.search(low.split("?")[0]):
         return False
     return any(h in low for h in GOOD_HOST)
 
