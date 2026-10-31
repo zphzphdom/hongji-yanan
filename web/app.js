@@ -109,7 +109,7 @@
     // 先图后文：图片能立刻给出讲的是哪个点，正文随后出
     if (r.imageUrl || r.image) {
       var pic = {
-        src: ((window.RED_IMAGES || {})[r.image] || {}).file || r.imageUrl,
+        src: r.imageUrl || ((window.RED_IMAGES || {})[r.image] || {}).file,
         alt: r.imageAlt || r.image || '',
         credit: r.imageCredit || ('配图：' + (r.image || '')),
         fallback: ((window.RED_IMAGES || {})[r.image] || {}).file
@@ -127,18 +127,6 @@
       });
       b.appendChild(row);
     }
-    // 网络补图（与本地图并列展示，标注来源）
-    if (r.imageUrl) {
-      var wImg = imageBlock({
-        src: r.imageUrl, alt: r.imageAlt || '', credit: r.imageCredit || '图源：网络',
-        fallback: ((window.RED_IMAGES || {})[r.image] || {}).file
-      });
-      if (wImg.firstChild) {
-        wImg.classList.add('img-web');
-        b.appendChild(wImg);
-      }
-    }
-
     if (r.web && r.web.length) {
       var wr = el('div', 'web-row');
       r.web.slice(0, 2).forEach(function (w) {
