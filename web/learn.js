@@ -154,7 +154,7 @@
     var input = $('#chatInput');
     if (!input) return;
     var v = (input.value || '').trim();
-    state.note = v;
+    state.note = (state.note ? state.note + '；' : '') + v;
     if (v) bubble(v, 'me');
     clearInput();
     $('#chatInputBox').classList.add('hidden');
@@ -267,6 +267,7 @@
       img.src = it.src; img.alt = it.alt; img.loading = 'lazy';
       img.referrerPolicy = 'no-referrer';
       img.onerror = function () { fig.classList.add('broken'); };
+      img.onclick = function () { zoom(it.src, it.alt, it.credit); };
       fig.appendChild(img);
       if (it.credit) {
         var cap = document.createElement('figcaption');
@@ -289,6 +290,27 @@
       }, 3200);
     }
   }
+
+  /* ---------------- 图片放大 ---------------- */
+  function zoom(src, alt, credit) {
+    var mask = $('#zoomMask');
+    if (!mask || !src) return;
+    $('#zoomImg').src = src;
+    $('#zoomImg').alt = alt || '';
+    $('#zoomCap').textContent = credit || '';
+    mask.classList.remove('hidden');
+    document.addEventListener('keydown', zoomEsc);
+  }
+
+  function zoomClose() {
+    var mask = $('#zoomMask');
+    if (!mask) return;
+    mask.classList.add('hidden');
+    $('#zoomImg').src = '';
+    document.removeEventListener('keydown', zoomEsc);
+  }
+
+  function zoomEsc(e) { if (e.key === 'Escape') zoomClose(); }
 
   /* ---------------- 三、点位讲解 ---------------- */
   function openSite(sid, idx) {
@@ -668,11 +690,32 @@
     $('#chatInput').onkeydown = function (e) {
       if (e.key === 'Enter') { e.preventDefault(); sendNote(); }
     };
+    function refine(text) {
+      var t = String(text || '').trim();
+      if (!t) { toast('先写一句要求'); return; }
+      bubble(t, 'me');
+      state.note = (state.note ? state.note + '；' : '') + t;
+      state._planning = false;
+      buildPlan();
+      $('#refineNote').value = '';
+    }
+    $('#refineBtn').onclick = function () { refine($('#refineNote').value); };
+    $('#refineNote').onkeydown = function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); refine($('#refineNote').value); }
+    };
+    var tags = document.querySelectorAll('.refine-tags .tag');
+    [].forEach.call(tags, function (b) {
+      b.onclick = function () { refine(b.dataset.tag); };
+    });
     $('#startRoute').onclick = function () {
       if (!state.route.length) { toast('线路为空'); return; }
       openSite(state.route[0].siteId, 0);
     };
     $('#reChat').onclick = function () { show('stepChat'); startChat(); };
+    var zc = $('#zoomClose');
+    if (zc) zc.onclick = function (e) { e.stopPropagation(); zoomClose(); };
+    var zm = $('#zoomMask');
+    if (zm) zm.onclick = function (e) { if (e.target === this) zoomClose(); };
     $('#toTask2').onclick = function () {
       api('/api/task', { site: state.site.id, identity: state.identity, stage: state.stage, scope: state.scope })
         .then(function (j) {
