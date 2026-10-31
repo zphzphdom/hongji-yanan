@@ -13,6 +13,7 @@
   admin / <随机生成> → 全部权限（见 data/users.json）
 """
 import base64
+import concurrent.futures as cf
 import hashlib
 import hmac
 import json
@@ -567,7 +568,7 @@ IMG_BAD_HOST = ("google.", "gstatic.", "facebook.", "twitter.", "instagram.", "t
                 "zhimg.com", "pstatic.", "doubleclick.")
 
 
-IMG_NEG_TTL = 6 * 3600  # 失败结果只保留 6 小时，之后重试
+IMG_NEG_TTL = 20 * 60  # 失败结果只缓存 20 分钟，之后重试
 
 
 def _img_cache():
@@ -722,6 +723,102 @@ def _img_pixels_ok(url, timeout=6):
         return True
     except Exception:
         return None          # 无法判定：不因此拦截（网络/格式问题）
+
+
+VISION_CACHE = os.path.join(DATA, "vision_cache.json")
+
+
+def _vision_cache():
+    return read_json(VISION_CACHE, {}) or {}
+
+
+def vision_check(url, context, cfg=None, timeout=25):
+    """让视觉模型看图：返回 {ok, related, desc, reason}。
+
+    ok=False 表示这次没识别成功（网络/额度/解析失败），调用方应降级处理。
+    """
+    import base64 as _b64
+    import io as _io
+    if not url:
+        return {"ok": False, "related": None, "desc": "", "reason": "no_url"}
+    key = hashlib.sha1((url + "|" + (context or "")[:80]).encode()).hexdigest()[:16]
+    cache = _vision_cache()
+    if key in cache:
+        return cache[key]
+
+    cfg = cfg or llm_config()
+    if not cfg.get("key"):
+        return {"ok": False, "related": None, "desc": "", "reason": "no_key"}
+
+    try:
+        from PIL import Image
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            blob = r.read(1500000)
+        im = Image.open(_io.BytesIO(blob)).convert("RGB")
+        im.thumbnail((640, 640))
+        buf = _io.BytesIO()
+        im.save(buf, "JPEG", quality=80)
+        b64 = _b64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        out = {"ok": False, "related": None, "desc": "", "reason": "download:" + type(e).__name__}
+        return out
+
+    prompt = (
+        "请判断这张图片是否与下面的内容相关。\n"
+        "内容：%s\n\n"
+        "只输出一行 JSON，不要解释，格式："
+        '{"desc": "用12字以内描述图片里实际是什么", "related": true 或 false, '
+        '"why": "20字以内的判断理由"}'
+    ) % (context or "延安红色文旅")
+
+    payload = {
+        "model": cfg["model"],
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
+        ]}],
+        "max_tokens": 520,
+        "stream": False,
+        "temperature": 0.1,
+    }
+    try:
+        req2 = urllib.request.Request(cfg["chat"], data=json.dumps(payload).encode("utf-8"),
+                                      headers={"Content-Type": "application/json",
+                                               "Authorization": "Bearer " + cfg["key"]}, method="POST")
+        with urllib.request.urlopen(req2, timeout=timeout) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        content = (d.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+    except Exception as e:
+        out = {"ok": False, "related": None, "desc": "", "reason": "api:" + type(e).__name__}
+        return out
+
+    content = content.strip()
+    parsed = None
+    m = re.search(r"\{.*\}", content, re.S)
+    if m:
+        try:
+            parsed = json.loads(m.group(0))
+        except Exception:
+            parsed = None
+    if not parsed:
+        rel = ("true" in content.lower()) and ("false" not in content.lower())
+        parsed = {"desc": content[:24], "related": rel, "why": "文本解析"}
+    out = {"ok": True, "related": bool(parsed.get("related")),
+           "desc": str(parsed.get("desc") or "")[:24],
+           "reason": str(parsed.get("why") or "")[:40]}
+    with LOCK:
+        c = _vision_cache()
+        c[key] = out
+        if len(c) > 800:
+            for k in list(c)[:200]:
+                c.pop(k, None)
+        try:
+            write_json(VISION_CACHE, c)
+        except Exception:
+            pass
+    return out
 
 
 def _img_relevant(url, page_title, context, keys):
@@ -1371,62 +1468,113 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "card": card})
 
         if path == "/api/img":
-            # 实时从网上取图：候选池随机抽，抽到合格的即返回（每条不同）
+            # 实时取图：多关键词并行收集候选 → 文字强的直接用，弱的走视觉识别
             import random as _random
             kws = body.get("keys") or []
             if isinstance(kws, str):
                 kws = [k for k in kws.split() if k]
-            kws = [str(k)[:16] for k in kws][:4]
+            kws = [str(k)[:16] for k in kws if k][:4]
             ctx = str(body.get("context") or "")[:400]
+            # 关键词太少时，从回答正文里补实体（如「甘泉大峡谷」只抽出「甘泉」）
+            if len(kws) < 2 and ctx:
+                for w in extract_keywords(ctx):
+                    if w not in kws:
+                        kws.append(w)
+                kws = kws[:5]
 
             combos = []
             for i in range(len(kws)):
                 combos.append(kws[i:i + 2])
                 combos.append(kws[i:i + 1])
+            for k in kws[:2]:
+                combos.append(["延安", k])
+                combos.append([k, "延安"])
             combos.append(["延安"])
-            _random.shuffle(combos)
+            seen_combo, uniq = set(), []
+            for c in combos:
+                c = [x for x in c if x]
+                key = "|".join(c)
+                if c and key not in seen_combo:
+                    seen_combo.add(key)
+                    uniq.append(c)
+            _random.shuffle(uniq)
 
-            deadline = time.time() + 14
-            got = None
             tried = set()
-            for combo in combos:
-                if got or time.time() > deadline:
-                    break
-                combo = [k for k in combo if k]
-                if not combo:
-                    continue
-                # 同一关键词多抽两次，提高"每次不一样"的概率
-                for _ in range(2):
-                    try:
-                        box = {}
-                        th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=6)))
-                        th.start()
-                        th.join(timeout=7)
-                        cand = box.get("v")
-                    except Exception:
-                        cand = None
-                    if not cand or not cand.get("url"):
-                        break
-                    url = cand["url"]
+            lock2 = threading.Lock()
+
+            def fetch_one(combo):
+                try:
+                    box = {}
+                    th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=6)))
+                    th.start()
+                    th.join(timeout=7)
+                    cand = box.get("v")
+                except Exception:
+                    return None
+                if not cand or not cand.get("url"):
+                    return None
+                url = cand["url"]
+                with lock2:
                     if url in tried:
-                        continue
+                        return None
                     tried.add(url)
-                    if not plan._credible(url, strict=False):
-                        continue
-                    url2 = _img_https_ok(url)
-                    if not url2:
-                        continue
-                    if ctx and not _img_relevant(url2, cand.get("pageTitle"), ctx, kws):
-                        continue
-                    if _img_pixels_ok(url2) is False:
-                        continue
-                    got = {"url": url2, "credit": cand.get("credit") or "图源：网络",
-                           "alt": cand.get("alt") or " ".join(combo)}
-                    break
-            if not got:
-                return self._json({"ok": True, "url": "", "reason": "未找到通过校验的相关图片"})
-            return self._json({"ok": True, "url": got["url"], "credit": got["credit"],
-                               "alt": got["alt"]})
+                if not plan._credible(url, strict=False):
+                    return None
+                url2 = _img_https_ok(url)
+                if not url2:
+                    return None
+                if _img_pixels_ok(url2) is False:
+                    return None
+                return {"url": url2, "credit": cand.get("credit") or "图源：网络",
+                        "alt": cand.get("alt") or " ".join(combo),
+                        "pageTitle": cand.get("pageTitle") or "",
+                        "combo": combo}
+
+            # 并行收集最多 6 张候选
+            pre = []
+            with cf.ThreadPoolExecutor(max_workers=4) as ex:
+                for r in ex.map(fetch_one, uniq[:8]):
+                    if r:
+                        pre.append(r)
+                    if len(pre) >= 6:
+                        break
+
+            if not pre:
+                return self._json({"ok": True, "url": "", "reason": "网上没有检索到可用图片"})
+
+            # 先看文字强匹配：命中 ≥2 个关键词直接用，不花识图时间
+            for it in pre:
+                hay = (it["pageTitle"] + " " + it["url"] + " " + " ".join(it["combo"])).lower()
+                hits = sum(1 for k in kws if k and k.lower() in hay)
+                if hits >= 2:
+                    return self._json({"ok": True, "url": it["url"],
+                                       "credit": it["credit"], "alt": it["alt"], "desc": ""})
+
+            # 其余走视觉识别（并行）
+            verdict = {}
+
+            def vis_one(it):
+                v = vision_check(it["url"], ctx or " ".join(it["combo"]), llm_config())
+                with lock2:
+                    verdict[it["url"]] = v
+
+            ths = [threading.Thread(target=vis_one, args=(it,)) for it in pre[:4]]
+            for th in ths:
+                th.start()
+            for th in ths:
+                th.join(timeout=26)
+
+            for it in pre[:4]:
+                v = verdict.get(it["url"]) or {}
+                if v.get("ok") and v.get("related") is False:
+                    append_log({"event": "vision_reject", "url": it["url"][:200],
+                                "desc": v.get("desc"), "why": v.get("reason")})
+                    continue
+                desc = v.get("desc") if v.get("ok") else ""
+                return self._json({"ok": True, "url": it["url"],
+                                   "credit": it["credit"] + ("　识别：" + desc if desc else ""),
+                                   "alt": desc or it["alt"], "desc": desc})
+            return self._json({"ok": True, "url": "", "reason": "候选图均与内容不符"})
 
         if path == "/api/log":
             append_log({
