@@ -687,6 +687,56 @@ def _img_head_ok(url, timeout=4, min_bytes=25000):
         return False
 
 
+def _img_https_ok(url, timeout=4):
+    """http 图在 https 页面会被拦截：能升级就升级，不能就丢弃。"""
+    if not url:
+        return None
+    if url.startswith("https://"):
+        return url
+    if url.startswith("http://"):
+        cand = "https://" + url[len("http://"):]
+        return cand if _img_head_ok(cand, timeout=timeout) else None
+    return None
+
+
+def _img_pixels_ok(url, timeout=6):
+    """像素级自动识别：确认是一张真实照片（够大、比例正常、颜色不单一）。"""
+    try:
+        import io as _io
+        from PIL import Image, ImageStat
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0",
+                                                   "Referer": "https://yanan.gov.cn/"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            blob = r.read(1200000)
+        im = Image.open(_io.BytesIO(blob)).convert("RGB")
+        w, h = im.size
+        if w < 420 or h < 280:
+            return False
+        ratio = w / max(1, h)
+        if ratio > 3.2 or ratio < 0.33:
+            return False
+        # 颜色标准差过小 → 纯色块/占位图
+        stat = ImageStat.Stat(im.resize((80, 80)))
+        if max(stat.stddev) < 12:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def _img_relevant(url, page_title, context, keys):
+    """文本相关性：图片所在页面标题/关键词要与回答内容对得上。"""
+    hay = (url or "") + " " + (page_title or "") + " " + " ".join(keys or [])
+    hay_n = re.sub(r"\s+", "", hay).lower()
+    terms = [k for k in (keys or []) if k] + [t for t in extract_keywords(context or "") if t]
+    hits = 0
+    for t in set(terms):
+        tn = str(t).lower()
+        if len(tn) >= 2 and tn in hay_n:
+            hits += 1
+    return hits >= 1
+
+
 def web_image(keywords, timeout=5):
     """按关键词从网上取一张相关图：并行抓候选页 → 并行 HEAD 校验 → 命名域过滤。"""
     if not keywords:
@@ -721,7 +771,9 @@ def web_image(keywords, timeout=5):
                 continue
             if IMG_OK.search(u.split("?")[0]) and not any(h in u for h in IMG_BAD_HOST):
                 if _img_head_ok(u):
-                    found = {"url": u, "credit": "图源：" + _site_name(w), "alt": " ".join(keywords)}
+                    found = {"url": u, "credit": "图源：" + _site_name(w),
+                             "alt": " ".join(keywords), "page": w.get("url") or "",
+                             "pageTitle": w.get("title") or ""}
                     break
 
         # 从相关页面里抓候选图（并行）
@@ -778,11 +830,16 @@ def web_image(keywords, timeout=5):
             for u in uniq[:12]:
                 if verdict.get(u):
                     site = "相关报道"
+                    page_url_hint, page_title_hint = "", ""
                     for w in ranked:
                         if (w.get("url") or "") and u.find("//") > 0:
                             site = _site_name(w)
+                            page_url_hint = w.get("url") or ""
+                            page_title_hint = w.get("title") or ""
                             break
-                    found = {"url": u, "credit": "图源：" + site, "alt": " ".join(keywords)}
+                    found = {"url": u, "credit": "图源：" + site,
+                             "alt": " ".join(keywords), "page": page_url_hint or "",
+                             "pageTitle": page_title_hint or ""}
                     break
 
     _img_cache_put(key, found)
@@ -1245,7 +1302,7 @@ class Handler(SimpleHTTPRequestHandler):
             days = max(1, min(7, days))
             note = str(body.get("note") or "")[:120]
             route = plan.plan_route(identity, stage, interest, days, note)
-            head = plan.greet(identity, stage, interest, days, note, route)
+            head = plan.greet(identity, stage, interest, days, note, route, llm_config())
             scope = [r["siteId"] for r in route]
             imgs, web = plan.collect_images(route, interest, note, llm_config())
             brief = plan.web_brief(interest, note, llm_config())
@@ -1334,54 +1391,59 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "card": card})
 
         if path == "/api/img":
-            # 按关键词从网络取图（带缓存）；前端拿到后自己插入
+            # 按关键词从网络取图，并做自动识别：https + 像素 + 相关性
             kws = body.get("keys") or []
             if isinstance(kws, str):
                 kws = [k for k in kws.split() if k]
             kws = [str(k)[:16] for k in kws][:4]
+            ctx = str(body.get("context") or "")[:400]
+
             got = None
-            deadline = time.time() + 9
+            tried = set()
+            deadline = time.time() + 12
+            combos = []
             for i in range(len(kws)):
-                if time.time() > deadline:
+                combos.append(kws[i:i + 2])
+                combos.append(kws[i:i + 1])
+            combos.append(["延安"])
+            for combo in combos:
+                if time.time() > deadline or got:
                     break
-                for combo in (kws[i:i + 2], kws[i:i + 1]):
-                    combo = [k for k in combo if k]
-                    if not combo:
-                        continue
-                    try:
-                        box = {}
-                        th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=6)))
-                        th.start()
-                        th.join(timeout=7)
-                        got = box.get("v")
-                    except Exception:
-                        got = None
-                    if got and plan._credible(got.get("url") or "", strict=True):
-                        break
-                    got = None
-                if got:
-                    break
+                combo = [k for k in combo if k]
+                if not combo:
+                    continue
+                try:
+                    box = {}
+                    th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=6)))
+                    th.start()
+                    th.join(timeout=7)
+                    cand = box.get("v")
+                except Exception:
+                    cand = None
+                if not cand or not cand.get("url"):
+                    continue
+                url = cand["url"]
+                if url in tried:
+                    continue
+                tried.add(url)
+                if not plan._credible(url, strict=False):
+                    continue
+                # ① https 升级（https 页面加载 http 图会被拦截）
+                url2 = _img_https_ok(url)
+                if not url2:
+                    continue
+                # ② 自动识别：是不是一张真实照片
+                if not _img_pixels_ok(url2):
+                    continue
+                # ③ 相关性：页面标题/关键词与回答内容对得上
+                if ctx and not _img_relevant(url2, cand.get("pageTitle"), ctx, kws):
+                    continue
+                got = {"url": url2, "credit": cand.get("credit") or "图源：网络",
+                       "alt": cand.get("alt") or " ".join(combo)}
             if not got:
-                # 兜底：放宽来源限制，只要有相关图就用（仍来自网络）
-                for i in range(len(kws)):
-                    combo = [k for k in kws[i:i + 2] if k]
-                    if not combo:
-                        continue
-                    try:
-                        box = {}
-                        th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=5)))
-                        th.start()
-                        th.join(timeout=6)
-                        got = box.get("v")
-                    except Exception:
-                        got = None
-                    if got and got.get("url"):
-                        break
-            if not got:
-                return self._json({"ok": True, "url": ""})
-            return self._json({"ok": True, "url": got.get("url"),
-                               "credit": got.get("credit") or "图源：网络",
-                               "alt": got.get("alt") or ""})
+                return self._json({"ok": True, "url": "", "reason": "未找到通过校验的相关图片"})
+            return self._json({"ok": True, "url": got["url"], "credit": got["credit"],
+                               "alt": got["alt"]})
 
         if path == "/api/log":
             append_log({
