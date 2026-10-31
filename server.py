@@ -737,113 +737,93 @@ def _img_relevant(url, page_title, context, keys):
     return hits >= 1
 
 
-def web_image(keywords, timeout=5):
-    """按关键词从网上取一张相关图：并行抓候选页 → 并行 HEAD 校验 → 命名域过滤。"""
+def web_image(keywords, timeout=5, fresh=False):
+    """按关键词联网找图。首次收集多张候选存池，之后每次随机取一张（每条不同）。"""
+    import random as _rnd
     if not keywords:
         return None
-    key = "|".join(keywords[:2])
+    key = "pool|" + "|".join(keywords[:2])
     cache = _img_cache()
-    if key in cache:
-        val = cache[key]
-        if val:
-            return val
-        ts = (cache.get("__ts__") or {}).get(key, 0) if isinstance(cache.get("__ts__"), dict) else 0
-        if time.time() - ts < IMG_NEG_TTL:
-            return None
+    pool = cache.get(key)
+    if isinstance(pool, list) and pool and not fresh:
+        return _rnd.choice(pool)
 
     cfg = llm_config()
-    found = None
+    found = []
     if cfg["key"] and cfg["search_on"]:
         try:
             results = ds_search(cfg, " ".join(keywords) + " 图片", timeout=timeout)
         except Exception:
             results = []
 
-        # 结果本身就是图片
         BADNAME = ("logo", "icon", "avatar", "qrcode", "share", "banner", "wechat",
                    "admin", "default", "placeholder", "empty")
+
+        # ① 结果本身就是图片
         for w in results:
             u = w.get("url") or ""
             low = u.lower()
             if any(b in low for b in BADNAME):
                 continue
-            if re.search(r"(sheji|stock|vcg|cfp|veer|zcool|699pic)", low):
+            if not IMG_OK.search(u.split("?")[0]) or any(h in u for h in IMG_BAD_HOST):
                 continue
-            if IMG_OK.search(u.split("?")[0]) and not any(h in u for h in IMG_BAD_HOST):
-                if _img_head_ok(u):
-                    found = {"url": u, "credit": "图源：" + _site_name(w),
-                             "alt": " ".join(keywords), "page": w.get("url") or "",
-                             "pageTitle": w.get("title") or ""}
-                    break
+            if _img_head_ok(u):
+                found.append({"url": u, "credit": "图源：" + _site_name(w),
+                              "alt": " ".join(keywords), "page": "",
+                              "pageTitle": w.get("title") or ""})
 
-        # 从相关页面里抓候选图（并行）
-        if not found and results:
+        # ② 从相关页面里抓候选图（并行），收集多张
+        if len(found) < 4 and results:
             GOOD = ("gov.cn", "xinhuanet", "people.com.cn", "cnwest.com", "hsw.cn",
                     "gmw.cn", "cnr.cn", "yanews.cn", "cn")
-            ranked = sorted(results, key=lambda w: 0 if any(d in (w.get("url") or "") for d in GOOD) else 1)
-            pages = [w for w in ranked[:6] if (w.get("url") or "").startswith("http")]
+            ranked = sorted(results, key=lambda w: 0 if any(
+                d in (w.get("url") or "") for d in GOOD) else 1)
+            pages = [w for w in ranked[:5] if (w.get("url") or "").startswith("http")]
 
-            cands, boxes = [], {}
-            lock = threading.Lock()
+            bag, lock = [], threading.Lock()
 
-            def grab(u):
-                imgs = _fetch_page_images(u, timeout=4)
+            def grab(w):
+                imgs = _fetch_page_images(w.get("url") or "", timeout=4)
                 with lock:
-                    cands.extend(imgs)
+                    for u in imgs:
+                        bag.append((u, w))
 
-            ths = [threading.Thread(target=grab, args=(w["url"],)) for w in pages]
+            ths = [threading.Thread(target=grab, args=(w,)) for w in pages]
             for th in ths:
                 th.start()
             for th in ths:
                 th.join(timeout=5)
 
-            # 并行 HEAD 校验，取第一个合格的
+            seen = {f["url"] for f in found}
+            checked = []
+            for u, w in bag:
+                if u in seen or len(found) >= 5:
+                    continue
+                seen.add(u)
+                checked.append((u, w))
             verdict = {}
 
             def check(u):
-                verdict[u] = _img_head_ok(u, timeout=4)
+                verdict[u] = _img_head_ok(u, timeout=3)
 
-            uniq = []
-            for u in cands:
-                if u not in uniq:
-                    uniq.append(u)
-            cths = [threading.Thread(target=check, args=(u,)) for u in uniq[:12]]
+            cths = [threading.Thread(target=check, args=(u,)) for u, _ in checked[:10]]
             for th in cths:
                 th.start()
             for th in cths:
-                th.join(timeout=5)
-            def quality(u):
-                low = u.lower()
-                score = 0
-                if re.search(r"20\d{2}[-/]?\d{2}[-/]?\d{2}", low):
-                    score += 3
-                if "/photo/" in low or "/upload/" in low or "/pic/" in low:
-                    score += 2
-                if any(h in low for h in ("news.cn", "xinhuanet", "people.com.cn", "cnr.cn",
-                                          "yanews.cn", "cnwest.com", "gmw.cn", "yanan.gov.cn")):
-                    score += 2
-                if re.search(r"(sheji|stock|vcg|cfp|veer|zcool|699pic)", low):
-                    score -= 3
-                return score
-
-            uniq.sort(key=lambda u: -quality(u))
-            for u in uniq[:12]:
-                if verdict.get(u):
-                    site = "相关报道"
-                    page_url_hint, page_title_hint = "", ""
-                    for w in ranked:
-                        if (w.get("url") or "") and u.find("//") > 0:
-                            site = _site_name(w)
-                            page_url_hint = w.get("url") or ""
-                            page_title_hint = w.get("title") or ""
-                            break
-                    found = {"url": u, "credit": "图源：" + site,
-                             "alt": " ".join(keywords), "page": page_url_hint or "",
-                             "pageTitle": page_title_hint or ""}
+                th.join(timeout=4)
+            for u, w in checked[:10]:
+                if len(found) >= 5:
                     break
+                if verdict.get(u):
+                    found.append({"url": u, "credit": "图源：" + _site_name(w),
+                                  "alt": " ".join(keywords), "page": w.get("url") or "",
+                                  "pageTitle": w.get("title") or ""})
 
+    if not found:
+        _img_cache_put(key, None)
+        return None
     _img_cache_put(key, found)
-    return found
+    return _rnd.choice(found)
 
 
 # ---------------------------------------------------------------- 问答卡文案：联网生成 + 去重
@@ -1391,56 +1371,58 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "card": card})
 
         if path == "/api/img":
-            # 按关键词从网络取图，并做自动识别：https + 像素 + 相关性
+            # 实时从网上取图：候选池随机抽，抽到合格的即返回（每条不同）
+            import random as _random
             kws = body.get("keys") or []
             if isinstance(kws, str):
                 kws = [k for k in kws.split() if k]
             kws = [str(k)[:16] for k in kws][:4]
             ctx = str(body.get("context") or "")[:400]
 
-            got = None
-            tried = set()
-            deadline = time.time() + 16
             combos = []
             for i in range(len(kws)):
                 combos.append(kws[i:i + 2])
                 combos.append(kws[i:i + 1])
             combos.append(["延安"])
+            _random.shuffle(combos)
+
+            deadline = time.time() + 14
+            got = None
+            tried = set()
             for combo in combos:
-                if time.time() > deadline or got:
+                if got or time.time() > deadline:
                     break
                 combo = [k for k in combo if k]
                 if not combo:
                     continue
-                try:
-                    box = {}
-                    th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=6)))
-                    th.start()
-                    th.join(timeout=7)
-                    cand = box.get("v")
-                except Exception:
-                    cand = None
-                if not cand or not cand.get("url"):
-                    continue
-                url = cand["url"]
-                if url in tried:
-                    continue
-                tried.add(url)
-                if not plan._credible(url, strict=False):
-                    continue
-                # ① https 升级（https 页面加载 http 图会被拦截）
-                url2 = _img_https_ok(url)
-                if not url2:
-                    continue
-                # ② 相关性（便宜）：页面标题/关键词要和回答内容对得上
-                if ctx and not _img_relevant(url2, cand.get("pageTitle"), ctx, kws):
-                    continue
-                # ③ 自动识别（较贵）：确认真实照片；无法判定时不拦截
-                verdict = _img_pixels_ok(url2)
-                if verdict is False:
-                    continue
-                got = {"url": url2, "credit": cand.get("credit") or "图源：网络",
-                       "alt": cand.get("alt") or " ".join(combo)}
+                # 同一关键词多抽两次，提高"每次不一样"的概率
+                for _ in range(2):
+                    try:
+                        box = {}
+                        th = threading.Thread(target=lambda: box.update(v=web_image(combo, timeout=6)))
+                        th.start()
+                        th.join(timeout=7)
+                        cand = box.get("v")
+                    except Exception:
+                        cand = None
+                    if not cand or not cand.get("url"):
+                        break
+                    url = cand["url"]
+                    if url in tried:
+                        continue
+                    tried.add(url)
+                    if not plan._credible(url, strict=False):
+                        continue
+                    url2 = _img_https_ok(url)
+                    if not url2:
+                        continue
+                    if ctx and not _img_relevant(url2, cand.get("pageTitle"), ctx, kws):
+                        continue
+                    if _img_pixels_ok(url2) is False:
+                        continue
+                    got = {"url": url2, "credit": cand.get("credit") or "图源：网络",
+                           "alt": cand.get("alt") or " ".join(combo)}
+                    break
             if not got:
                 return self._json({"ok": True, "url": "", "reason": "未找到通过校验的相关图片"})
             return self._json({"ok": True, "url": got["url"], "credit": got["credit"],
