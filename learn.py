@@ -336,58 +336,64 @@ def judge(site, task, choice=None, text=None, image=None, cfg=None):
                 "feedback": "这个选项还差一点。提示：%s" % q.get("guide", ""),
                 "guide": "再读一遍展签，然后重新选择。", "taskType": ttype}
 
-    # 文本 / 照片题：照片题必须带图
+    # 文本 / 照片题：只要提交了就完成，不判对错、不给「再想想」
     if ttype == "photo" and not image:
-        return {"ok": False, "score": 0, "feedback": "这一题需要先上传一张现场照片。",
-                "guide": "点「上传现场照片」拍一张再来提交。", "taskType": ttype}
+        return {"ok": False, "score": 0,
+                "feedback": "这一题需要先上传一张现场照片。",
+                "guide": "点「上传现场照片」拍一张再提交。", "taskType": ttype}
+    if ttype == "text" and not (text or "").strip():
+        return {"ok": False, "score": 0,
+                "feedback": "写一两句你的观察就可以提交。",
+                "guide": "哪怕只写一句也行。", "taskType": ttype}
     if not (text or "").strip() and not image:
         return {"ok": False, "score": 0, "feedback": "还没有提交内容。",
-                "guide": "写一两句你的观察，或上传照片。", "taskType": ttype}
+                "guide": "写一两句，或上传照片。", "taskType": ttype}
 
-    sub = ((text or "") + " " + (image or ""))
-    sub_n = _norm(sub)
-    pay = ((text or "") + " " + (q.get("q") or ""))
-    groups = q.get("accept") or []
-    hit_groups = 0
-    for grp in groups:
-        if any(_norm(w) and _norm(w) in _norm(pay) for w in grp):
-            hit_groups += 1
+    # 到这里就视为完成
+    covered = 0
+    try:
+        pay = ((text or "") + " " + (q.get("q") or ""))
+        for grp in (q.get("accept") or []):
+            if any(_norm(w) and _norm(w) in _norm(pay) for w in grp):
+                covered += 1
+    except Exception:
+        covered = 0
 
-    kn = dict(site.get("knowledge") or {})
-    key_num = set(n for n in re.findall(r"\d+(?:\.\d+)?", "".join(kn.values())) if n in (text or ""))
-    covered = hit_groups + len(key_num)
-    has_photo = bool(image)
-    need = 1 if has_photo else 2
-    ok = covered >= need
-    score = min(100, 40 + covered * 25) if covered else (55 if has_photo else 20)
-
-    # 引导性反馈
+    # 引导性反馈：模型可用就让模型写，否则用模板
     ai = ""
-    if cfg and cfg.get("key"):
+    cfg_key = (cfg or {}).get("key")
+    if cfg_key:
         try:
-            import urllib.request
-            prompt = ("你是延安红色研学导师。学生在「%s」第 %s 题这样写：%s\n"
-                      "参考要点：%s\n请用两句话给引导性反馈：第一句肯定他写到的具体内容，"
-                      "第二句指出还能补充什么。不要打分，不要客套。"
-                      % (site["name"], ttype, (text or "（只上传了照片）")[:300],
-                         "；".join(q.get("guide", "") for _ in [0])))
+            import json as _json
+            import urllib.request as _u
+            prompt = ("你是延安红色研学导师。学生在「%s」提交了%s：%s\n"
+                      "请用两句话回应：第一句肯定他写到的具体内容（哪怕是感受），"
+                      "第二句给一个他可以继续观察或思考的方向。不要打分，不要说他答错，"
+                      "不要用「再想想」这类否定说法。简体中文，60 字以内。"
+                      % (site["name"], "文字" if ttype == "text" else "照片与说明",
+                         (text or "（上传了照片）")[:300]))
             payload = {"model": cfg["model"], "messages": [{"role": "user", "content": prompt}],
-                       "temperature": 0.5, "max_tokens": 1200, "stream": False}
-            req = urllib.request.Request(cfg["chat"], data=__import__("json").dumps(payload).encode("utf-8"),
-                                         headers={"Content-Type": "application/json",
-                                                  "Authorization": "Bearer " + cfg["key"]}, method="POST")
-            with urllib.request.urlopen(req, timeout=18) as r:
-                d = __import__("json").loads(r.read().decode("utf-8"))
-            ai = (d.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+                       "temperature": 0.6, "max_tokens": 700, "stream": False}
+            req = _u.Request(cfg["chat"], data=_json.dumps(payload).encode("utf-8"),
+                             headers={"Content-Type": "application/json",
+                                      "Authorization": "Bearer " + cfg["key"]}, method="POST")
+            with _u.urlopen(req, timeout=18) as r:
+                d = _json.loads(r.read().decode("utf-8"))
+            ai = ((d.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+            ai = ai.replace("\n", " ")[:120]
         except Exception:
             ai = ""
+
     if not ai:
-        if ok:
-            ai = "你写到了关键点，方向是对的。可以再补一处细节：%s" % q.get("guide", "")
+        ai = ("收到你在「%s」的记录，这一站算完成。" % site["name"])
+        if covered:
+            ai += "你写到了关键细节，可以再看一眼展签上的年份或数字，把它补进笔记。"
         else:
-            ai = "还差一点。看看展签上的年份或数字，把它写进来：%s" % q.get("guide", "")
-    return {"ok": ok, "score": score, "feedback": ai, "guide": q.get("guide", ""),
-            "covered": covered, "taskType": ttype, "hasPhoto": has_photo}
+            ai += "如果愿意，可以再补一句现场看到的细节（年份、数字或展签上的话）。"
+
+    return {"ok": True, "score": 100, "feedback": ai,
+            "guide": q.get("guide", ""), "covered": covered,
+            "taskType": ttype, "hasPhoto": bool(image)}
 
 
 # ---------------------------------------------------------------- 纪念卡
