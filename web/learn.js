@@ -14,7 +14,7 @@
 
   var state = {
     site: null, sites: [], task: null, progress: null, lastImage: null,
-    identity: 'student', stage: 'middle', interest: '', duration: 'half', note: '',
+    identity: 'student', stage: 'middle', interest: '', days: 1, note: '', scope: [],
     plan: null, route: [], routeIdx: 0, justCompleted: false, afterFinish: null
   };
 
@@ -24,7 +24,6 @@
     history: '革命旧址与事件', spirit: '延安精神与作风',
     nature: '自然风光与黄河', art: '文艺与新闻出版', family: '亲子与研学'
   };
-  var DURATIONS = { half: '半日', full: '一日', two: '两日' };
 
   function api(path, body) {
     var payload = body || {};
@@ -101,17 +100,43 @@
     optButtons(INTERESTS, function (k, label) {
       state.interest = k;
       bubble(label, 'me');
-      askDuration();
+      askDays();
     });
   }
 
-  function askDuration() {
-    bubble('大概能安排多长时间？', 'ai');
-    optButtons(DURATIONS, function (k, label) {
-      state.duration = k;
-      bubble(label, 'me');
-      askNote();
-    });
+  function askDays() {
+    bubble('打算玩几天？（1—7 天，直接填数字）', 'ai');
+    var box = $('#chatOpts');
+    box.innerHTML = '';
+    $('#chatInputBox').classList.remove('hidden');
+    var input = $('#chatInput');
+    input.value = String(state.days || 1);
+    input.setAttribute('inputmode', 'numeric');
+    input.placeholder = '比如 2';
+    var go = $('#chatGen');
+    go.classList.remove('hidden');
+    go.textContent = '就是这么多天';
+    go.onclick = function () { confirmDays(); };
+    input.onkeydown = function (e) { if (e.key === 'Enter') confirmDays(); };
+  }
+
+  function confirmDays() {
+    var v = parseInt(($('#chatInput').value || '').replace(/[^0-9]/g, ''), 10);
+    if (!v || v < 1) { toast('请填 1—7 之间的天数'); return; }
+    if (v > 7) { toast('最多 7 天'); v = 7; }
+    state.days = v;
+    bubble(v + ' 天', 'me');
+    $('#chatOpts').innerHTML = '';
+    $('#chatInputBox').classList.add('hidden');
+    var go = $('#chatGen');
+    go.classList.add('hidden');
+    go.textContent = '生成我的线路';
+    go.onclick = function () {
+      state.note = $('#chatInput').value.trim();
+      if (state.note) bubble(state.note, 'me');
+      buildPlan();
+    };
+    askNote();
   }
 
   function askNote() {
@@ -129,13 +154,14 @@
     bubble('好，我去查资料，给你排一条线路……', 'ai');
     api('/api/plan', {
       identity: state.identity, stage: state.stage,
-      interest: state.interest || 'history', duration: state.duration, note: state.note
+      interest: state.interest || 'history', days: state.days, note: state.note
     }).then(function (j) {
       if (btn) btn.disabled = false;
       if (!j || !j.ok) { toast('线路生成失败，请重试'); return; }
       state.plan = j;
       state.route = j.route || [];
       state.routeIdx = 0;
+      state.scope = (j.scope && j.scope.length) ? j.scope : state.route.map(function (r) { return r.siteId; });
       if (j.progress) renderProgress(j.progress);
       renderPlan(j);
       show('stepPlan');
@@ -157,15 +183,24 @@
 
     var list = $('#routeList');
     list.innerHTML = '';
+    var lastDay = 0;
     state.route.forEach(function (r, i) {
+      if (r.day && r.day !== lastDay) {
+        lastDay = r.day;
+        var dh = document.createElement('div');
+        dh.className = 'route-day';
+        dh.textContent = '第 ' + r.day + ' 天';
+        list.appendChild(dh);
+      }
       var d = document.createElement('div');
       d.className = 'route-item';
       var mins = r.minutes ? r.minutes + ' 分钟' : '';
       d.innerHTML = '<span class="route-no">' + r.order + '</span>' +
         '<div class="route-main"><div class="route-name">' + r.name +
-        '<span class="route-lv">' + r.level + '</span></div>' +
-        '<div class="route-why">' + r.why + '</div></div>' +
-        '<span class="route-min">' + mins + '</span>';
+        '<span class="route-lv">' + (r.level || '') + '</span></div>' +
+        '<div class="route-why">' + (r.why || '') + '</div>' +
+        (r.county ? '<div class="route-county">' + r.county + '</div>' : '') +
+        '</div><span class="route-min">' + mins + '</span>';
       d.onclick = function () { openSite(r.siteId, i); };
       list.appendChild(d);
     });
@@ -202,10 +237,7 @@
     g.innerHTML = '';
     clearInterval(galleryTimer);
     var items = [];
-    (local || []).forEach(function (x) {
-      var meta = (window.RED_IMAGES || {})[x.local];
-      if (meta && meta.file) items.push({ src: meta.file, alt: x.name, credit: x.credit || '' });
-    });
+    // 只使用联网图，不再回落到本地图库
     (web || []).forEach(function (x) {
       if (x.url) items.push({ src: x.url, alt: x.alt || '延安', credit: x.credit || '图源：网络' });
     });
@@ -247,7 +279,7 @@
   /* ---------------- 三、点位讲解 ---------------- */
   function openSite(sid, idx) {
     if (typeof idx === 'number') state.routeIdx = idx;
-    api('/api/site', { site: sid }).then(function (j) {
+    api('/api/site', { site: sid, scope: state.scope }).then(function (j) {
       if (!j || !j.ok) { toast('点位不存在'); return; }
       state.site = j.site;
       state.sites = j.sites;
@@ -424,7 +456,8 @@
   }
 
   function collect() {
-    var out = { site: state.site.id, identity: state.identity, stage: state.stage };
+    var out = { site: state.site.id, identity: state.identity, stage: state.stage,
+                scope: state.scope };
     if (state.task.mode === 'party') {
       var picks = [];
       var blocks = document.querySelectorAll('#questionCard .q-opts');
@@ -501,7 +534,7 @@
   }
 
   function openMemorial(siteId) {
-    api('/api/memorial', { site: siteId || '', name: signerName() }).then(function (j) {
+    api('/api/memorial', { site: siteId || '', name: signerName(), scope: state.scope }).then(function (j) {
       if (!j || !j.ok) return;
       lastName = j.card;
       var el = $('#memName');
@@ -578,7 +611,7 @@
   /* ---------------- 绑定 ---------------- */
   function bind() {
     startChat();
-    api('/api/progress', {}).then(function (j) {
+    api('/api/progress', { scope: state.scope }).then(function (j) {
       if (j && j.ok) { state.sites = j.sites || []; renderProgress(j.progress); }
     });
 
@@ -601,7 +634,7 @@
     };
     $('#reChat').onclick = function () { show('stepChat'); startChat(); };
     $('#toTask2').onclick = function () {
-      api('/api/task', { site: state.site.id, identity: state.identity, stage: state.stage })
+      api('/api/task', { site: state.site.id, identity: state.identity, stage: state.stage, scope: state.scope })
         .then(function (j) {
           if (!j || !j.ok) { toast('任务下发失败'); return; }
           renderTask(j.task);
