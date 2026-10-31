@@ -151,25 +151,16 @@ _VISIT_LOCK = threading.Lock()
 
 
 def _rotate(pool, visitor, identity, stage, sid, n):
-    """不同访客分散到不同题；同一访客重复进入也往后换一题。"""
-    if not pool:
-        return []
-    seed = int(hashlib.sha1((visitor + sid + identity + stage).encode()).hexdigest()[:8], 16)
-    k = (visitor, sid, identity, stage)
-    with _VISIT_LOCK:
-        _VISITS[k] = _VISITS.get(k, 0) + 1
-        step = _VISITS[k] - 1
-    start = (seed + step) % len(pool)
-    out = []
-    for i in range(min(n, len(pool))):
-        q = pool[(start + i) % len(pool)]
-        out.append({"q": q["q"], "options": list(q["options"]), "answer": q["answer"],
-                    "guide": q.get("guide", "")})
-    return out
+    """保留的老接口，内部走 pick_questions。"""
+    return pick_questions({"id": sid}, identity, stage, visitor, n)
 
 
-def pick_questions(site, identity, stage, visitor="", n=1):
-    """按身份与学段取不同池；同一访客多次进入也会换题。"""
+_VISITS = {}
+_VISIT_LOCK = threading.Lock()
+TYPES = ["choice", "text", "photo"]
+
+
+def _pool_for(site, identity, stage):
     sid = site["id"]
     deep = _QUIZ.get("deep", {}).get(sid) or {}
     if deep:
@@ -181,10 +172,61 @@ def pick_questions(site, identity, stage, visitor="", n=1):
             key = stage if stage in deep else "middle"
         else:
             key = "public"
-        pool = deep.get(key) or deep.get("middle") or []
-        return _rotate(pool, visitor, identity, stage, sid, n)
-    pool = _QUIZ.get("scenic", {}).get(sid) or []
-    return _rotate(pool, visitor, identity, stage, sid, n)
+        return list(deep.get(key) or deep.get("middle") or [])
+    return list(_QUIZ.get("scenic", {}).get(sid) or [])
+
+
+def pick_questions(site, identity, stage, visitor="", n=1):
+    """按身份/学段取池，同池内轮换，保证不重复。"""
+    pool = _pool_for(site, identity, stage)
+    if not pool:
+        return []
+    sid = site["id"]
+    seed = int(hashlib.sha1((visitor + sid + identity + stage).encode()).hexdigest()[:8], 16)
+    k = (visitor, sid, identity, stage)
+    with _VISIT_LOCK:
+        _VISITS[k] = _VISITS.get(k, 0) + 1
+        step = _VISITS[k] - 1
+    start = (seed + step) % len(pool)
+    out = []
+    for i in range(min(n, len(pool))):
+        q = pool[(start + i) % len(pool)]
+        out.append({"type": q.get("type", "choice"), "q": q["q"],
+                    "options": list(q.get("options") or []),
+                    "answer": q.get("answer", -1),
+                    "accept": q.get("accept") or [],
+                    "guide": q.get("guide", "")})
+    return out
+
+
+def dispatch(site, identity, stage, visitor=""):
+    """点击点位时随机派发一种题型，并在同类型里取一道没派过的题。
+
+    返回 (task_type, question)。party 固定为「导览 + 三题判断」，不走随机。
+    """
+    pool = _pool_for(site, identity, stage)
+    if not pool:
+        return "choice", {"type": "choice", "q": "这个点位最值得记住的一个事实是什么？",
+                          "options": ["展签上的时间", "展签上的数字", "展签上的地点", "以上都是"],
+                          "answer": 3, "accept": [], "guide": "先看展签的三类信息。"}
+
+    # 选哪种题型：按访客+点位做伪随机，保证同一人多次进入会轮到不同题型
+    sid = site["id"]
+    k = (visitor, sid, identity, stage)
+    with _VISIT_LOCK:
+        _VISITS[k] = _VISITS.get(k, 0) + 1
+        step = _VISITS[k] - 1
+    base = int(hashlib.sha1((visitor + sid + identity).encode()).hexdigest()[:8], 16)
+
+    have = [t for t in TYPES if any(q.get("type", "choice") == t for q in pool)]
+    if not have:
+        have = ["choice"]
+    t = have[(base + step) % len(have)]
+    same = [q for q in pool if q.get("type", "choice") == t]
+    q = same[(base // 7 + step) % len(same)]
+    return t, {"type": t, "q": q["q"], "options": list(q.get("options") or []),
+               "answer": q.get("answer", -1), "accept": q.get("accept") or [],
+               "guide": q.get("guide", "")}
 
 
 # ---------------------------------------------------------------- 任务下发
@@ -220,42 +262,34 @@ def served_task(visitor, sid, identity, stage):
 
 
 def build_task(site, identity, stage, cfg=None, want="", visitor=""):
-    task = _build_task(site, identity, stage, cfg, want, visitor)
+    if identity == "party":
+        qs = pick_questions(site, identity, stage, visitor, n=3)
+        # 党员必须答选择题
+        qs = [q for q in qs if q["type"] == "choice"] or qs
+        task = {"mode": "party", "kind": "电子导览", "tour": _tour_of(site),
+                "script": _script_of(site), "questions": qs, "taskType": "choice",
+                "guide": "先听导览，再完成下面的判断题；全部答对即标记该点位完成。"}
+    else:
+        t, q = dispatch(site, identity, stage, visitor)
+        allow = {"choice": ["choice"], "text": ["choice", "text"], "photo": ["choice", "image", "text"]}[t]
+        kind = {"choice": "选择题", "text": "文本题", "photo": "照片题"}[t]
+        if identity == "student":
+            kind = "%s · %s" % (STAGES.get(stage, "初中"), kind)
+        prompt = {"choice": "选一选最符合展签内容的一项：",
+                  "text": "读完展陈，写下你的观察与理解：",
+                  "photo": "拍下现场，再补一句说明："}[t]
+        task = {"mode": "learn", "kind": kind, "taskType": t, "stage": stage,
+                "prompt": prompt, "question": q, "extra": [], "allow": allow,
+                "guide": {"choice": "看完展签再选。",
+                          "text": "写下具体细节（年份、数字、地点），比空话得分高。",
+                          "photo": "照片要能看清展签或景物，文字补一两点细节。"}[t]}
     if visitor:
         with _SERVED_LOCK:
             _SERVED[(visitor, site["id"], identity, stage)] = task
             if len(_SERVED) > 5000:
-                for k in list(_SERVED)[:1000]:
-                    _SERVED.pop(k, None)
+                for kk in list(_SERVED)[:1000]:
+                    _SERVED.pop(kk, None)
     return task
-
-
-def _build_task(site, identity, stage, cfg=None, want="", visitor=""):
-    if identity == "party":
-        qs = pick_questions(site, identity, stage, visitor, n=3)
-        return {"mode": "party", "kind": "电子导览", "tour": _tour_of(site),
-                "script": _script_of(site), "questions": qs,
-                "guide": "先听导览，再完成下面的判断题；全部答对即标记该点位完成。"}
-
-    n = 2 if identity in ("student", "teacher") else 1
-    qs = pick_questions(site, identity, stage, visitor, n=n)
-    allow = ["choice", "text", "image"] if identity in ("student", "teacher") else ["choice"]
-    if identity == "student":
-        kind = "学段任务/%s" % STAGES.get(stage, "初中")
-    elif identity == "teacher":
-        kind = "教师任务"
-    else:
-        kind = "参观任务"
-    prompt = {"primary": "看完展览，选一选最符合展签内容的一项：",
-              "middle": "根据展陈内容回答问题：",
-              "high": "结合展陈内容完成下面这道题：",
-              "college": "结合展陈与史料判断："}.get(stage, "根据展陈内容回答问题：")
-    fallback = {"q": "这个点位最值得记住的一个事实是什么？",
-                "options": ["展签上的时间", "展签上的数字", "展签上的地点", "以上都是"],
-                "answer": 3, "guide": "先看展签的三类信息。"}
-    return {"mode": "learn", "kind": kind, "stage": stage, "prompt": prompt,
-            "question": qs[0] if qs else fallback, "extra": qs[1:], "allow": allow,
-            "guide": "可以选答案，也可以写下观察或上传现场照片。"}
 
 
 # ---------------------------------------------------------------- 判题
@@ -284,66 +318,76 @@ def judge(site, task, choice=None, text=None, image=None, cfg=None):
                                                 wrong[0].get("guide", "") if wrong else "")
             guide = "可以再看一遍展陈，然后重做。"
         return {"ok": ok, "score": score, "feedback": fb, "guide": guide,
-                "wrong": [q["q"] for q in wrong]}
-
-    if not choice and not text and not image:
-        return {"ok": False, "score": 0, "feedback": "还没有提交内容。",
-                "guide": "选一个答案，或写下你的观察。"}
+                "wrong": [q["q"] for q in wrong], "taskType": "choice"}
 
     q = task["question"]
-    if choice and not text and not image:
+    ttype = task.get("taskType") or q.get("type") or "choice"
+
+    # 选择题：直接对答案
+    if ttype == "choice":
+        if not choice:
+            return {"ok": False, "score": 0, "feedback": "还没有选择答案。",
+                    "guide": "选一项再提交。", "taskType": ttype}
         got = choice[0] if isinstance(choice, list) else choice
         if got == q["answer"]:
             return {"ok": True, "score": 100, "feedback": "答对了。%s" % q.get("guide", ""),
-                    "guide": "把这条事实记进你的研学笔记吧。"}
+                    "guide": "把这条事实记进你的研学笔记吧。", "taskType": ttype}
         return {"ok": False, "score": 0,
                 "feedback": "这个选项还差一点。提示：%s" % q.get("guide", ""),
-                "guide": "再读一遍展签，然后重新选择。"}
+                "guide": "再读一遍展签，然后重新选择。", "taskType": ttype}
 
-    sub = (text or "") + " " + (image or "")
+    # 文本 / 照片题：照片题必须带图
+    if ttype == "photo" and not image:
+        return {"ok": False, "score": 0, "feedback": "这一题需要先上传一张现场照片。",
+                "guide": "点「上传现场照片」拍一张再来提交。", "taskType": ttype}
+    if not (text or "").strip() and not image:
+        return {"ok": False, "score": 0, "feedback": "还没有提交内容。",
+                "guide": "写一两句你的观察，或上传照片。", "taskType": ttype}
+
+    sub = ((text or "") + " " + (image or ""))
     sub_n = _norm(sub)
-    kn = dict(site.get("knowledge") or [])
-    hits = [v for v in kn.values() if _norm(v) and _norm(v) in sub_n]
-    key_num = set(n for n in re.findall(r"\d+(?:\.\d+)?", "".join(kn.values())) if n in sub)
-    key_ent = set()
-    for k in kn:
-        core = re.sub(r"[（(].*?[)）]", "", k)
-        if core and core in sub_n:
-            key_ent.add(k)
-        else:
-            for frag in re.findall(r"[\u4e00-\u9fa5]{2,5}", core):
-                if frag in sub_n:
-                    key_ent.add(k)
-                    break
-    covered = len(set(hits)) + len(key_num) + len(key_ent)
-    score = min(100, 30 + covered * 25) if sub.strip() else 0
-    ok = covered >= 2
+    pay = ((text or "") + " " + (q.get("q") or ""))
+    groups = q.get("accept") or []
+    hit_groups = 0
+    for grp in groups:
+        if any(_norm(w) and _norm(w) in _norm(pay) for w in grp):
+            hit_groups += 1
 
+    kn = dict(site.get("knowledge") or {})
+    key_num = set(n for n in re.findall(r"\d+(?:\.\d+)?", "".join(kn.values())) if n in (text or ""))
+    covered = hit_groups + len(key_num)
+    has_photo = bool(image)
+    need = 1 if has_photo else 2
+    ok = covered >= need
+    score = min(100, 40 + covered * 25) if covered else (55 if has_photo else 20)
+
+    # 引导性反馈
     ai = ""
     if cfg and cfg.get("key"):
         try:
             import urllib.request
-            prompt = ("你是延安红色研学导师。学生在「%s」提交了学习任务。\n点位知识点：%s\n学生提交：%s\n"
-                      "用两句话给引导性反馈：第一句指出他答对或观察到的具体内容，第二句给下一步方向。"
-                      "不要打分，不要客套。"
-                      % (site["name"], "；".join("%s：%s" % kv for kv in kn.items()),
-                         (text or ("（图片）" + (image or "")))[:400]))
+            prompt = ("你是延安红色研学导师。学生在「%s」第 %s 题这样写：%s\n"
+                      "参考要点：%s\n请用两句话给引导性反馈：第一句肯定他写到的具体内容，"
+                      "第二句指出还能补充什么。不要打分，不要客套。"
+                      % (site["name"], ttype, (text or "（只上传了照片）")[:300],
+                         "；".join(q.get("guide", "") for _ in [0])))
             payload = {"model": cfg["model"], "messages": [{"role": "user", "content": prompt}],
                        "temperature": 0.5, "max_tokens": 1200, "stream": False}
-            req = urllib.request.Request(cfg["chat"], data=json.dumps(payload).encode("utf-8"),
+            req = urllib.request.Request(cfg["chat"], data=__import__("json").dumps(payload).encode("utf-8"),
                                          headers={"Content-Type": "application/json",
                                                   "Authorization": "Bearer " + cfg["key"]}, method="POST")
             with urllib.request.urlopen(req, timeout=18) as r:
-                d = json.loads(r.read().decode("utf-8"))
+                d = __import__("json").loads(r.read().decode("utf-8"))
             ai = (d.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
         except Exception:
             ai = ""
     if not ai:
-        if covered == 0:
-            ai = "你提交的内容里还没有出现这个点位的具体史实。回到展板，找一处数字或年份写进答案。"
+        if ok:
+            ai = "你写到了关键点，方向是对的。可以再补一处细节：%s" % q.get("guide", "")
         else:
-            ai = "你写到了%s，方向是对的。再看讲解里另外几处细节，把它们串成一句话。" % "、".join(list(kn.keys())[:2])
-    return {"ok": ok, "score": score, "feedback": ai, "guide": q.get("guide", ""), "covered": covered}
+            ai = "还差一点。看看展签上的年份或数字，把它写进来：%s" % q.get("guide", "")
+    return {"ok": ok, "score": score, "feedback": ai, "guide": q.get("guide", ""),
+            "covered": covered, "taskType": ttype, "hasPhoto": has_photo}
 
 
 # ---------------------------------------------------------------- 纪念卡
