@@ -372,6 +372,11 @@
 
   function openCard(r, question) {
     lastAnswer = { r: r, q: question };
+    var sEl = $('#cardSigner');
+    if (sEl) {
+      try { sEl.value = store.get('hy_signer') || ''; } catch (e) {}
+      if (!sEl.value) setTimeout(function () { try { sEl.focus(); } catch (e) {} }, 280);
+    }
     drawCard(r, question);
     $('#cardMask').classList.remove('hidden');
     // 卡片文案走服务端：每次联网现生成，并保证不与历史卡片重复
@@ -502,6 +507,13 @@
     g.fillText('扫码继续问', qx + 58, qy + qs + 46);
 
     // 左下角
+    var sign = '';
+    try { sign = (store.get('hy_signer') || '').trim(); } catch (e) { sign = ''; }
+    if (sign) {
+      g.fillStyle = '#8C1F28';
+      g.font = '700 32px "Songti SC",serif';
+      g.fillText('—— ' + sign.slice(0, 12), 80, H - 168);
+    }
     g.fillStyle = '#211A17';
     g.font = '400 26px "PingFang SC",sans-serif';
     g.fillText('我问到了什么，也留下了出处。', 80, H - 120);
@@ -519,6 +531,19 @@
     g.font = '400 18px "PingFang SC",sans-serif';
     g.fillText('1935—1948', W - 120, 146);
     g.textAlign = 'left';
+  }
+
+  // 署名输入：即时保存并重绘卡片
+  function bindSigner() {
+    var el = $('#cardSigner');
+    if (!el) return;
+    var redraw = function () {
+      var v = (el.value || '').trim().slice(0, 12);
+      try { store.set('hy_signer', v); } catch (e) {}
+      if (lastAnswer && lastAnswer.r) drawCard(lastAnswer.r, lastAnswer.q);
+    };
+    el.addEventListener('input', redraw);
+    el.addEventListener('change', redraw);
   }
 
   function cardText(r, q) {
@@ -755,6 +780,7 @@
   }
 
   function initAuth() {
+    bindSigner();
     bindAuth();
     enterApp();
     if ($('#consoleWho')) $('#consoleWho').textContent = '设计者视图';
