@@ -13,7 +13,11 @@
   })();
 
   var REGION = (function () {
-    try { return localStorage.getItem('hy_region') || 'yanan'; } catch (e) { return 'yanan'; }
+    try {
+      var m = new URLSearchParams(location.search).get('r');
+      if (m) { localStorage.setItem('hy_region', m); return m; }
+      return localStorage.getItem('hy_region') || 'yanan';
+    } catch (e) { return 'yanan'; }
   })();
   var REGIONS = [];
 
@@ -64,6 +68,21 @@
   }
 
 
+
+  function applyLearnRegion(r) {
+    if (!r) return;
+    var brand = r.brand || ('红迹·' + (r.name || '延安'));
+    var ai = r.aiName || '延小讲';
+    document.title = (r.title || brand) + ' · 点位学习';
+    var bn = document.querySelector('.brand-name');
+    if (bn) bn.textContent = brand;
+    var sub = document.querySelector('.brand-sub');
+    if (sub) sub.textContent = ai + ' · 陪你走' + (r.name || '延安');
+    document.documentElement.style.setProperty('--region-accent', r.accent || '#8C1F28');
+    var head = document.querySelector('.learn-top .brand');
+    if (head) head.setAttribute('data-region', r.id || '');
+  }
+
   /* ---------------- 地区切换 ---------------- */
   function renderRegionBar() {
     var bar = $('#regionBar');
@@ -99,6 +118,7 @@
         if (!REGIONS.some(function (x) { return x.id === REGION; })) {
           REGION = REGIONS.length ? REGIONS[0].id : 'yanan';
         }
+        applyLearnRegion(REGIONS.filter(function (x) { return x.id === REGION; })[0]);
         renderRegionBar();
       }).catch(function () {});
   }
@@ -822,7 +842,7 @@
   })();
 
   function openMemorial(siteId) {
-    api('/api/memorial', { site: siteId || '', name: signerName(), scope: state.scope }).then(function (j) {
+    api('/api/memorial', { site: siteId || '', name: signerName(), scope: state.scope, region: REGION }).then(function (j) {
       if (!j || !j.ok) return;
       lastName = j.card;
       var el = $('#memName');
@@ -859,7 +879,7 @@
     g.fillText(c.title, 80, 140);
     g.font = '400 28px "PingFang SC",sans-serif';
     g.fillStyle = 'rgba(250,245,239,.9)';
-    g.fillText('红迹·延安 · 展览点位学习', 80, 196);
+    g.fillText((c.cardHead) || ((c.brand || '红迹·延安') + ' · 点位学习'), 80, 196);
     g.fillStyle = '#F3D9B8';
     g.font = '700 44px "Songti SC",serif';
     g.fillText(c.badge, 80, 268);
@@ -911,7 +931,7 @@
     }
     g.fillStyle = '#A6978E';
     g.font = '400 22px "PingFang SC",sans-serif';
-    g.fillText('红迹·延安 · ' + new Date().toLocaleDateString('zh-CN'), 80, H - 120);
+    g.fillText((c.brand || '红迹·延安') + ' · ' + new Date().toLocaleDateString('zh-CN'), 80, H - 120);
     g.fillText('扫码继续参观', 80, H - 80);
   }
 
