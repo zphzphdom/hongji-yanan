@@ -40,6 +40,13 @@
     }).then(function (r) { return r.json(); });
   }
 
+  function getJSON(url) {
+    return fetch(url, { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+
   function toast(msg) {
     var t = $('#toast');
     t.textContent = msg; t.classList.add('on');
@@ -379,6 +386,132 @@
 
   function zoomEsc(e) { if (e.key === 'Escape') zoomClose(); }
 
+
+  /* ---------------- 位置卡与导航 ---------------- */
+  var geoState = { data: null, pos: null };
+
+  function haversineKm(a, b) {
+    var R = 6371, toR = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(a.lat * toR) * Math.cos(b.lat * toR) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  function loadGeo(siteId) {
+    var card = $('#geoCard');
+    if (!card) return;
+    var q = '/api/geo?site=' + encodeURIComponent(siteId);
+    function paint(pos) {
+      if (pos) {
+        geoState.pos = pos;
+        q += '&lat=' + pos.lat + '&lng=' + pos.lng;
+      }
+      getJSON(q).then(function (g) {
+        if (!g || !g.ok) {
+          card.classList.add('hidden');
+          return;
+        }
+        geoState.data = g;
+        card.classList.remove('hidden');
+        drawGeoMap(g);
+        var bits = [];
+        bits.push('<b>' + g.name + '</b>');
+        var place = [g.city, g.county].filter(Boolean).join(' · ');
+        if (place) bits.push(place);
+        if (g.addr) bits.push(g.addr);
+        bits.push('坐标 ' + g.lat.toFixed(4) + ', ' + g.lng.toFixed(4) + (g.approx ? '（约，县区中心）' : '（约）'));
+        if (g.distanceKm != null) {
+          bits.push('直线距离 ' + g.distanceKm + ' 公里 · 车程约 ' + g.driveMin + ' 分钟');
+        }
+        $('#geoInfo').innerHTML = bits.map(function (x) { return '<div>' + x + '</div>'; }).join('');
+        var nav = $('#geoNav'), open = $('#geoOpen');
+        if (nav) nav.href = g.amap.navFrom || g.amap.nav;
+        if (open) open.href = g.amap.marker;
+        var tip = $('#geoTip');
+        if (tip) {
+          tip.textContent = g.distanceKm != null
+            ? '点击「开始导航」会用高德地图规划驾车路线；手机端会尝试直接唤起高德 App。'
+            : '未获取定位，导航将以下车地点为起点规划。允许定位可显示距离与车程。';
+        }
+      }).catch(function () { card.classList.add('hidden'); });
+    }
+
+    // 浏览器定位（可选）：失败就直接按坐标展示
+    if (navigator.geolocation) {
+      var done = false;
+      var timer = setTimeout(function () { if (!done) { done = true; paint(null); } }, 4000);
+      navigator.geolocation.getCurrentPosition(function (p) {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        paint({ lat: p.coords.latitude, lng: p.coords.longitude });
+      }, function () {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        paint(null);
+      }, { timeout: 3500, maximumAge: 60000 });
+    } else {
+      paint(null);
+    }
+  }
+
+  function drawGeoMap(g) {
+    var cv = $('#geoCanvas');
+    if (!cv) return;
+    var ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // 底：暖色网格，示意"地图"
+    ctx.fillStyle = '#FBF6F0'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#EFE2D6'; ctx.lineWidth = 1;
+    for (var x = 0; x < W; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (var y = 0; y < H; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+
+    var cx = W / 2, cy = H / 2 + 10;
+
+    // 若有当前位置，画一条虚线连接
+    if (g.from) {
+      var d = Math.max(40, Math.min(230, (g.distanceKm || 1) * 3));
+      var ux = (g.lng - g.from.lng), uy = -(g.lat - g.from.lat);
+      var len = Math.max(0.0001, Math.sqrt(ux * ux + uy * uy));
+      var px = cx - ux / len * d, py = cy - uy / len * d;
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = '#C08552'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(cx, cy); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#8C6A4A';
+      ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.font = '400 12px "PingFang SC",sans-serif';
+      ctx.fillText('当前位置', px + 10, py + 4);
+    }
+
+    // 目的地：脉冲圈 + 标记
+    var t = Date.now() / 600;
+    var r = 16 + 6 * Math.sin(t);
+    ctx.beginPath(); ctx.arc(cx, cy, r + 8, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(140,31,40,.12)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+    ctx.fillStyle = '#8C1F28'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+    ctx.fillStyle = '#211A17';
+    ctx.font = '600 15px "PingFang SC",sans-serif';
+    ctx.textAlign = 'center';
+    var label = g.name.length > 14 ? g.name.slice(0, 13) + '…' : g.name;
+    ctx.fillText(label, cx, cy + 34);
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = '#A6978E';
+    ctx.font = '400 11px "PingFang SC",sans-serif';
+    ctx.fillText('示意图（非实际路网）', 12, H - 12);
+  }
+
   /* ---------------- 三、点位讲解 ---------------- */
   function openSite(sid, idx) {
     if (typeof idx === 'number') state.routeIdx = idx;
@@ -393,6 +526,7 @@
       $('#introLevel').textContent = (j.site.level || '') + ' 级景区 · 点位 ' + (j.site.no || '');
       $('#introText').textContent = j.site.intro;
       show('stepIntro');
+      loadGeo(j.site.id);
     });
   }
 
