@@ -505,3 +505,17 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
   text-decoration:none}
 .sb-p{flex:0 0 auto;font-size:10px;color:#fff;background:#C08552;border-radius:4px;padding:1px 6px}
 .sb-t{font-size:12.5px;color:#3A2E29;line-height:1.5}
+
+/* 位置卡 */
+.geo-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px;
+  box-shadow:var(--shadow-1)}
+.geo-card.hidden{display:none}
+.geo-card canvas{width:100%;height:auto;border-radius:10px;display:block;background:#FBF6F0}
+.geo-info{margin-top:10px;font-size:12.5px;color:#4A3A34;line-height:1.8}
+.geo-info b{color:var(--red);font-size:14px}
+.geo-acts{display:flex;gap:8px;margin-top:10px}
+.geo-btn{flex:1;text-align:center;text-decoration:none;border:1px solid var(--line);border-radius:10px;
+  padding:11px 8px;font-size:13.5px;color:#4A3A34;background:#fff}
+.geo-btn.primary{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
+.geo-btn:active{transform:scale(.98)}
+.geo-tip{margin-top:8px;font-size:11px;color:#A6978E;line-height:1.6}
