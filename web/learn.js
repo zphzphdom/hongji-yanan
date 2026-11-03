@@ -426,11 +426,16 @@
           bits.push('直线距离 ' + g.distanceKm + ' 公里 · 车程约 ' + g.driveMin + ' 分钟');
         }
         $('#geoInfo').innerHTML = bits.map(function (x) { return '<div>' + x + '</div>'; }).join('');
-        var nav = $('#geoNav'), open = $('#geoOpen');
+        var nav = $('#geoNav'), open = $('#geoOpen'), search = $('#geoSearch');
         if (nav) nav.href = g.amap.navFrom || g.amap.nav;
         if (open) open.href = g.amap.marker;
+        if (search) search.href = g.amap.search || g.amap.marker;
         var tip = $('#geoTip');
         if (tip) {
+          if (!g.amap.precise) {
+            tip.textContent = '该点坐标为县区级近似；点「按名称搜」可让高德按景点名精确定位。';
+            return;
+          }
           tip.textContent = g.distanceKm != null
             ? '点击「开始导航」会用高德地图规划驾车路线；手机端会尝试直接唤起高德 App。'
             : '未获取定位，导航将以下车地点为起点规划。允许定位可显示距离与车程。';
