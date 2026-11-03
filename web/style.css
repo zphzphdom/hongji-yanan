@@ -519,3 +519,13 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .geo-btn.primary{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
 .geo-btn:active{transform:scale(.98)}
 .geo-tip{margin-top:8px;font-size:11px;color:#A6978E;line-height:1.6}
+
+/* 命中条目 */
+.kbhits{margin-top:10px;background:#FBF6F0;border:1px solid #EFE2D6;border-radius:10px;padding:10px 12px}
+.kbh-title{font-size:11px;color:#A0703C;letter-spacing:.06em;margin-bottom:6px}
+.kbh-row{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-top:1px dashed #EFE2D6;
+  font-size:12.5px;color:#3A2E29}
+.kbh-id{flex:0 0 auto;font-family:ui-monospace,monospace;font-size:10.5px;color:#fff;
+  background:#B0863A;border-radius:4px;padding:1px 6px}
+.kbh-q{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kbh-meta{flex:0 0 auto;font-size:10.5px;color:#A6978E}
