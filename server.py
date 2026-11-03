@@ -208,6 +208,14 @@ def geo_of(site, from_lat=None, from_lng=None):
                          % (lng, lat, urllib.parse.quote(name)),
                "nav": "https://uri.amap.com/navigation?to=%.5f,%.5f,%s&mode=car&policy=1&src=hongji&coordinate=gaode&callnative=1"
                       % (lng, lat, urllib.parse.quote(name)),
+               # 坐标缺失或不准时，按名称检索（无需 Key，跳转精准）
+               "search": "https://uri.amap.com/search?keyword=%s&city=%s&src=hongji&callnative=1"
+                         % (urllib.parse.quote(name), urllib.parse.quote(info.get("city") or "")),
+               "tencent": "https://apis.map.qq.com/uri/v1/marker?marker=coord:%.5f,%.5f;title:%s;addr:%s&referer=hongji"
+                          % (lat, lng, urllib.parse.quote(name), urllib.parse.quote(info.get("addr") or name)),
+               "baidu": "https://api.map.baidu.com/marker?location=%.5f,%.5f&title=%s&content=%s&coord_type=gcj02&output=html"
+                        % (lat, lng, urllib.parse.quote(name), urllib.parse.quote(info.get("addr") or name)),
+               "precise": not approx,
            }}
     if from_lat is not None and from_lng is not None:
         try:
@@ -1196,7 +1204,10 @@ def answer(query, mode, trace=False, region=DEFAULT_REGION):
         "text": text["text"],
         "current": bool(web_hits),                 # 是否基于本次联网实时结果
         "verdict": verdict,
-        "kb": [{"id": h.get("id"), "q": h.get("q"), "kind": h.get("kind")} for h in kb_hits],
+        "kb": [{"id": h.get("id"), "q": h.get("q"), "kind": h.get("kind"),
+                "chars": len(h.get("a") or ""),
+                "a": (h.get("a") or "")[:160],
+                "variantOf": h.get("variantOf")} for h in kb_hits],
         "sources": srcs,
         "web": web,
         "image": "",
@@ -1213,7 +1224,10 @@ def answer(query, mode, trace=False, region=DEFAULT_REGION):
         "kbVersion": kb.get("version"),
     } if trace else {
         "ok": True, "mode": mode, "text": text["text"], "current": bool(web_hits),
-        "verdict": verdict, "kb": [{"id": h.get("id"), "q": h.get("q")} for h in kb_hits],
+        "verdict": verdict,
+        "kb": [{"id": h.get("id"), "q": h.get("q"), "kind": h.get("kind"),
+                "chars": len(h.get("a") or ""), "variantOf": h.get("variantOf")}
+               for h in kb_hits],
         "sources": srcs, "web": web, "image": "",
         "imageUrl": "",
         "imagePending": True,
@@ -1294,6 +1308,7 @@ def dashboard():
         by_user[u] = by_user.get(u, 0) + 1
     ms.sort()
     kb = read_json(os.path.join(DATA, "kb.json"), {}) or {}
+    rmeta = region_index().get("regions", [])
     health = read_json(os.path.join(DATA, "kb_health.json"), {}) or {}
     return {
         "total": total,
@@ -1307,7 +1322,16 @@ def dashboard():
         "p50": ms[len(ms) // 2] if ms else 0,
         "p90": ms[int(len(ms) * 0.9)] if ms else 0,
         "byUser": by_user,
-        "kb": {"count": kb.get("count"), "sources": kb.get("sources"), "version": kb.get("version")},
+        "kb": {"count": sum((r.get("count") or 0) for r in rmeta),
+               "chars": sum((r.get("chars") or 0) for r in rmeta),
+               "sources": sum((r.get("sources") or 0) for r in rmeta),
+               "version": "regions-v3"},
+        "regions": [{"id": r.get("id"), "name": r.get("name"),
+                     "count": r.get("count"), "chars": r.get("chars"),
+                     "sources": r.get("sources"), "kinds": r.get("kinds") or {},
+                     "share": round((r.get("count") or 0) /
+                                    max(1, sum((x.get("count") or 0) for x in rmeta)) * 100, 1)}
+                    for r in rmeta],
         "sourceHealth": {"ok": health.get("ok"), "total": health.get("total"),
                          "checked": health.get("checked_at")},
         "recent": read_logs(20),
@@ -1416,6 +1440,9 @@ class Handler(SimpleHTTPRequestHandler):
             meta = region_meta(rid) or {}
             kb["region"] = rid
             kb["regionName"] = meta.get("name") or "延安"
+            kb["count"] = meta.get("count") or kb.get("count")
+            kb["chars"] = meta.get("chars") or sum(len(x.get("a") or "") for x in (kb.get("entries") or []))
+            kb["kinds"] = meta.get("kinds") or {}
             return self._json(kb)
         if path == "/api/capabilities":
             cfg = llm_config()
@@ -1565,7 +1592,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "site": {"id": site["id"], "no": site["no"], "name": site["name"],
                           "short": site["short"], "level": site["level"], "intro": site["intro"]},
                 "progress": learn.progress_of(vis, body.get("scope") or None),
-                "sites": learn.site_list(),
+                "sites": [x for x in learn.site_list()
+                          if (x.get("region") or "yanan") == (body.get("region") or DEFAULT_REGION)],
                 "stages": learn.STAGES, "identities": learn.IDENTITIES,
             })
 
