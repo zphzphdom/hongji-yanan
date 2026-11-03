@@ -470,3 +470,38 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 @media (prefers-reduced-motion:reduce){
   *{animation:none !important;transition:none !important}
 }
+
+
+/* ---------- 地区切换 ---------- */
+.region-bar{display:flex;gap:8px;margin:10px 0 4px;position:relative;flex-wrap:wrap}
+.region-pill{position:relative;display:flex;flex-direction:column;gap:1px;align-items:flex-start;
+  border:1px solid rgba(255,255,255,.32);background:rgba(255,255,255,.10);
+  color:#FBEFE6;border-radius:12px;padding:7px 13px;cursor:pointer;
+  font-family:var(--sans);transition:transform .18s ease,background .22s ease,border-color .22s ease;
+  animation:chipIn .3s ease both}
+.region-pill .rp-name{font-size:13.5px;font-weight:600;letter-spacing:.04em}
+.region-pill .rp-meta{font-size:10px;opacity:.72}
+.region-pill:hover{background:rgba(255,255,255,.18);transform:translateY(-1px)}
+.region-pill.on{background:#FAF5EF;color:var(--region-accent,#8C1F28);border-color:#FAF5EF;
+  box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.region-pill.on .rp-meta{opacity:.65}
+.region-pill:active{transform:scale(.97)}
+
+/* 切换时的过渡 */
+.region-switching{animation:regionFade .42s ease}
+@keyframes regionFade{0%{opacity:1;transform:none}
+  45%{opacity:.35;transform:translateY(6px) scale(.995)}
+  100%{opacity:1;transform:none}}
+
+/* 主色随地区轻变 */
+.brand-name{transition:color .3s ease}
+.learn-top .region-bar .region-pill{border-color:rgba(255,255,255,.28)}
+
+/* 社交讨论参考 */
+.social-box{background:#FBF6F0;border:1px solid #EFE2D6;border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.social-box.hidden{display:none}
+.sb-head{font-size:11px;color:#A0703C;letter-spacing:.06em;margin-bottom:8px}
+.sb-row{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-top:1px solid #F1E7DC;
+  text-decoration:none}
+.sb-p{flex:0 0 auto;font-size:10px;color:#fff;background:#C08552;border-radius:4px;padding:1px 6px}
+.sb-t{font-size:12.5px;color:#3A2E29;line-height:1.5}
