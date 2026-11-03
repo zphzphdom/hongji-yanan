@@ -12,6 +12,11 @@
     return v;
   })();
 
+  var REGION = (function () {
+    try { return localStorage.getItem('hy_region') || 'yanan'; } catch (e) { return 'yanan'; }
+  })();
+  var REGIONS = [];
+
   var state = {
     site: null, sites: [], task: null, progress: null, lastImage: null,
     identity: 'student', stage: 'middle', interest: '', days: 1, note: '', scope: [],
@@ -49,6 +54,46 @@
       if (el) el.classList.toggle('hidden', k !== id);
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+
+  /* ---------------- 地区切换 ---------------- */
+  function renderRegionBar() {
+    var bar = $('#regionBar');
+    if (!bar || !REGIONS.length) return;
+    bar.innerHTML = '';
+    REGIONS.forEach(function (r) {
+      var b = document.createElement('button');
+      b.className = 'region-pill' + (r.id === REGION ? ' on' : '');
+      b.innerHTML = '<span class="rp-name">' + r.name + '</span>' +
+        '<span class="rp-meta">' + (r.count || 0) + ' 条 · ' +
+        Math.round((r.chars || 0) / 1000) + 'k 字</span>';
+      b.onclick = function () {
+        if (r.id === REGION) return;
+        REGION = r.id;
+        try { localStorage.setItem('hy_region', r.id); } catch (e) {}
+        document.documentElement.style.setProperty('--region-accent', r.accent || '#8C1F28');
+        renderRegionBar();
+        toast('已切换到「' + r.name + '」，重新生成线路即可');
+        state.route = [];
+        state.scope = [];
+        chatIdx = 0;
+        startChat();
+        show('stepChat');
+      };
+      bar.appendChild(b);
+    });
+  }
+
+  function bootRegions() {
+    fetch('api/regions', { cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        REGIONS = (d && d.regions) || [];
+        if (!REGIONS.some(function (x) { return x.id === REGION; })) {
+          REGION = REGIONS.length ? REGIONS[0].id : 'yanan';
+        }
+        renderRegionBar();
+      }).catch(function () {});
   }
 
   /* ---------------- 一、对话式开场 ---------------- */
@@ -167,7 +212,7 @@
     state._planning = true;
     bubble('好，我去查资料，给你排一条线路……', 'ai');
     api('/api/plan', {
-      identity: state.identity, stage: state.stage,
+      identity: state.identity, stage: state.stage, region: REGION,
       interest: state.interest || 'history', days: state.days, note: state.note
     }).then(function (j) {
       state._planning = false;
@@ -194,6 +239,7 @@
 
     renderGallery(j.images || [], j.webImages || []);
     renderWebBrief(j.webBrief || []);
+    renderSocial(j.social || []);
 
     var list = $('#routeList');
     list.innerHTML = '';
@@ -217,6 +263,27 @@
         '</div><span class="route-min">' + mins + '</span>';
       d.onclick = function () { openSite(r.siteId, i); };
       list.appendChild(d);
+    });
+  }
+
+  function renderSocial(items) {
+    var box = $('#socialBox');
+    if (!box) return;
+    if (!items || !items.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    var head = document.createElement('div');
+    head.className = 'sb-head';
+    head.textContent = '年轻人最近的讨论（小红书/抖音/B站公开页面）';
+    box.appendChild(head);
+    items.forEach(function (x) {
+      var a = document.createElement('a');
+      a.className = 'sb-row';
+      a.href = x.url || '#';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.innerHTML = '<span class=sb-p>' + (x.platform || '') + '</span>' +
+        '<span class=sb-t>' + (x.title || '') + '</span>';
+      box.appendChild(a);
     });
   }
 
@@ -711,6 +778,7 @@
 
   /* ---------------- 绑定 ---------------- */
   function bind() {
+    bootRegions();
     startChat();
     api('/api/progress', { scope: state.scope }).then(function (j) {
       if (j && j.ok) { state.sites = j.sites || []; renderProgress(j.progress); }
