@@ -2,6 +2,8 @@
   'use strict';
   var E = window.RedEngine;
   var $ = function (s) { return document.querySelector(s); };
+  var REGION = (function(){ try { return localStorage.getItem('hy_region') || 'yanan'; } catch(e){ return 'yanan'; } })(),
+    REGIONS = [], REGION_META = null;
   var KB = window.RED_KB, idx = null, mode = 'fact', lastAnswer = null, qrImg = null, LLM = null, sending = false, cardImg = null, cardImgKey = '';
 
   var CHIPS = [
@@ -35,6 +37,86 @@
           
         }
       }).catch(function () { /* 离线：用内嵌副本 */ });
+  }
+
+
+  /* ---------------- 地区切换 ---------------- */
+  function renderRegionBar() {
+    var bar = $('#regionBar');
+    if (!bar || !REGIONS.length) return;
+    bar.innerHTML = '';
+    REGIONS.forEach(function (r) {
+      var b = document.createElement('button');
+      b.className = 'region-pill' + (r.id === REGION ? ' on' : '');
+      b.dataset.id = r.id;
+      b.innerHTML = '<span class="rp-name">' + r.name + '</span>' +
+        '<span class="rp-meta">' + (r.count || 0) + ' 条 · ' +
+        Math.round((r.chars || 0) / 1000) + 'k 字</span>';
+      b.onclick = function () { switchRegion(r.id); };
+      bar.appendChild(b);
+    });
+    var idx = REGIONS.findIndex(function (r) { return r.id === REGION; });
+    bar.style.setProperty('--i', Math.max(0, idx));
+    bar.style.setProperty('--n', REGIONS.length);
+  }
+
+  function switchRegion(rid) {
+    if (rid === REGION) return;
+    REGION = rid;
+    try { store.set('hy_region', rid); } catch (e) {}
+    var meta = REGIONS.filter(function (r) { return r.id === rid; })[0] || {};
+    REGION_META = meta;
+
+    // 切换动画：整体轻微淡出再淡入 + 主色随地区变化
+    var app = $('#appView');
+    if (app) {
+      app.classList.add('region-switching');
+      setTimeout(function () { app.classList.remove('region-switching'); }, 420);
+    }
+    document.documentElement.style.setProperty('--region-accent', meta.accent || '#8C1F28');
+    var title = document.querySelector('.brand-name');
+    if (title) title.textContent = '红迹·' + (meta.name || '延安');
+    document.title = '红迹·' + (meta.name || '延安') + ' · AI 讲解员';
+    renderRegionBar();
+    loadRegionKb(rid);
+    toast('已切换到「' + (meta.name || rid) + '」');
+  }
+
+  function loadRegionKb(rid) {
+    fetch('api/kb?region=' + encodeURIComponent(rid), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (kb) {
+        if (!kb) return;
+        window.RED_KB = kb;
+        KB = kb;
+        if (kb.entries && kb.entries.length) {
+          try { buildIndex(); } catch (e) {}
+        }
+        var meta = '#{name} · {n} 条 · {w} 字 · {s} 个来源';
+        var m = meta.replace('{name}', kb.regionName || '延安')
+                     .replace('{n}', kb.count || 0)
+                     .replace('{w}', (kb.chars || 0).toLocaleString())
+                     .replace('{s}', kb.sources || 0);
+        if (LLM) m += ' · ' + LLM;
+        var box = $('#kbMeta');
+        if (box) box.textContent = m;
+        renderChips();
+      }).catch(function () {});
+  }
+
+  function bootRegions() {
+    fetch('api/regions', { cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        REGIONS = (d && d.regions) || [];
+        if (!REGIONS.length) return;
+        if (!REGIONS.some(function (x) { return x.id === REGION; })) REGION = REGIONS[0].id;
+        REGION_META = REGIONS.filter(function (x) { return x.id === REGION; })[0];
+        renderRegionBar();
+        var title = document.querySelector('.brand-name');
+        if (title) title.textContent = '红迹·' + (REGION_META.name || '延安');
+        document.documentElement.style.setProperty('--region-accent', REGION_META.accent || '#8C1F28');
+        loadRegionKb(REGION);
+      }).catch(function () {});
   }
 
   /* ---------------- 渲染 ---------------- */
@@ -189,7 +271,7 @@
       sending = false;
     }
 
-    api('/api/ask', { question: text, mode: mode }).then(function (j) {
+    api('/api/ask', { question: text, mode: mode, region: REGION }).then(function (j) {
       if (j && j.ok) {
         render(j);
       } else {
@@ -666,6 +748,7 @@
     qrImg.onload = function () { if (lastAnswer) drawCard(lastAnswer.r, lastAnswer.q); };
     qrImg.src = 'qr.png';
     initAuth();
+    bootRegions();
   }
 
   /* ================= 登录与后台 ================= */
