@@ -259,6 +259,20 @@ def region_file(rid):
     return path if os.path.exists(path) else os.path.join(REGIONS_DIR, DEFAULT_REGION + ".json")
 
 
+def region_copy(rid):
+    """地区文案：AI 名称、品牌名、提示词地区等。"""
+    m = region_meta(rid) or {}
+    return {
+        "aiName": m.get("aiName") or "延小讲",
+        "brand": m.get("brand") or "红迹·延安",
+        "name": m.get("name") or "延安",
+        "area": m.get("promptArea") or ("%s红色文旅" % (m.get("name") or "延安")),
+        "hint": m.get("promptHint") or "",
+        "keywords": m.get("keywords") or ["延安"],
+        "cardHead": m.get("cardHead") or "红迹·延安 · 展览点位学习",
+    }
+
+
 def region_name(rid):
     m = region_meta(rid) or {}
     return m.get("name") or "延安"
@@ -417,20 +431,25 @@ MODE_RULES = {
     "moment": "朋友圈一句话：一行，不超过 60 字，句末带 #延安红色之旅；不用「震惊／必看／天花板／绝美」这类词。",
 }
 
-SYSTEM = (
-    "你是延安红色文旅的 AI 讲解员「延小讲」。你拿到的是**刚刚联网检索到的实时网页内容**，"
-    "请据此回答用户提问，并在字里行间自然体现这是新近信息。\n\n"
-    "硬规则：\n"
-    "1. 事实只能来自这次给出的联网检索结果；检索结果里没有的数字、日期、人名、地名一律不写。\n"
-    "2. 数字、日期、专有名词必须与检索原文逐字一致，不换算、不约整、不补充推算。\n"
-    "3. 检索结果相互矛盾时，选官方来源（政府网站、官媒）；仍无法判断就说明「这一点需要查证」。\n"
-    "4. 一句话里最多出现 2 个数字；不要罗列数据清单。\n"
-    "5. 简体中文，不用 Markdown 符号，不写「作为AI」「以上回答」这类话。\n"
-    "6. 只输出正文，不要输出来源行（来源由系统附加）。\n"
-    "7. 只要内容与延安时期的人、事、旧址、精神相关，就用一句话把这段内容与「延安精神」四条中的一条自然联系起来"
-    "（坚定正确的政治方向／解放思想、实事求是／全心全意为人民服务／自力更生、艰苦奋斗）。"
-    "不要生硬贴标签，不要每次罗列四条；与延安无关的问题（如天气、交通）不必强行关联。"
-)
+def build_system(rid=DEFAULT_REGION):
+    """按地区生成系统提示词：AI 名称与关联精神随地区变化。"""
+    c = region_copy(rid)
+    return (
+        "你是%s的 AI 讲解员「%s」。你拿到的是**刚刚联网检索到的实时网页内容**，"
+        "请据此回答用户提问，并在字里行间自然体现这是新近信息。\n\n"
+        "硬规则：\n"
+        "1. 事实只能来自这次给出的联网检索结果；检索结果里没有的数字、日期、人名、地名一律不写。\n"
+        "2. 数字、日期、专有名词必须与检索原文逐字一致，不换算、不约整、不补充推算。\n"
+        "3. 检索结果相互矛盾时，选官方来源（政府网站、官媒）；仍无法判断就说明「这一点需要查证」。\n"
+        "4. 一句话里最多出现 2 个数字；不要罗列数据清单。\n"
+        "5. 简体中文，不用 Markdown 符号，不写「作为AI」「以上回答」这类话。\n"
+        "6. 只输出正文，不要输出来源行（来源由系统附加）。\n"
+        "7. %s。不要生硬贴标签，不要每次罗列条文；与本地无关的问题（如天气、交通）不必强行关联。\n"
+        "8. 你只讲%s的事；用户若问到别的地区，说明你只负责这一地区。"
+    ) % (c["area"], c["aiName"], c["hint"], c["name"])
+
+
+SYSTEM = build_system(DEFAULT_REGION)
 
 MODE_HINTS = {
     "fact": "史实问答：先给结论（一句），再补一句解释或一个细节。3—5 句、不超过 120 字。",
@@ -448,7 +467,7 @@ def _nums(s):
     return set(re.findall(r"\d+(?:\.\d+)?", s or ""))
 
 
-def ds_chat(cfg, query, mode, web_hits, timeout=20, budget=1200, strict=True):
+def ds_chat(cfg, query, mode, web_hits, timeout=20, budget=1200, strict=True, region=DEFAULT_REGION):
     """先用联网检索结果生成回答；strict=False 时允许在联网为空时用知识库兜底。"""
     if not cfg["key"]:
         return None, "no_key"
@@ -467,7 +486,7 @@ def ds_chat(cfg, query, mode, web_hits, timeout=20, budget=1200, strict=True):
     payload = {
         "model": cfg["model"],
         "messages": [
-            {"role": "system", "content": SYSTEM},
+            {"role": "system", "content": build_system(region)},
             {"role": "user", "content": "\n".join(parts)},
         ],
         "temperature": 0.35,
@@ -1076,7 +1095,7 @@ def _gen_lines(cfg, prompt, timeout=20):
     return [ln.strip(" -·。")[:24] for ln in raw.splitlines() if ln.strip()][:2]
 
 
-def card_copy(question, answer, mode, image_key):
+def card_copy(question, answer, mode, image_key, region=DEFAULT_REGION):
     """生成问答卡文案：每次联网现写，并避开已经用过的开头（保证每张不同）。"""
     cfg = llm_config()
     store = _cards()
@@ -1142,15 +1161,15 @@ def answer(query, mode, trace=False, region=DEFAULT_REGION):
             web_cache_put(web_query, web_hits)
 
     budget = {"fact": 900, "research": 1500, "moment": 700}.get(mode, 900)
-    text, err = ds_chat(cfg, query, mode, web_hits, timeout=22, budget=budget)
+    text, err = ds_chat(cfg, query, mode, web_hits, timeout=22, budget=budget, region=region)
     if not text and err:
         # 空输出常见于模型把预算花在推理上（finish_reason=length）：加预算重来一次
         retry_budget = 2600 if "length" in err else 1500
-        text, err2 = ds_chat(cfg, query, mode, web_hits, timeout=16, budget=retry_budget)
+        text, err2 = ds_chat(cfg, query, mode, web_hits, timeout=16, budget=retry_budget, region=region)
         err = err2 if not text else None
     if not text:
         # 联网全空 / 调用失败时才退回知识库兜底，并明确标注
-        text, err3 = ds_chat(cfg, query, mode, kb_hits, timeout=16, budget=1500, strict=False)
+        text, err3 = ds_chat(cfg, query, mode, kb_hits, timeout=16, budget=1500, strict=False, region=region)
         if not text:
             err = err3 or err
     llm_ms = text["ms"] if text else 0
@@ -1530,7 +1549,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": False, "error": "empty"}, 400)
             u = whoami(self)
             try:
-                card = card_copy(q, a, str(body.get("mode") or "fact"), str(body.get("image") or ""))
+                card = card_copy(q, a, str(body.get("mode") or "fact"), str(body.get("image") or ""),
+                             str(body.get("region") or DEFAULT_REGION))
             except Exception as e:
                 card = {"id": "", "lines": [q[:20], a[:20]], "unique": False,
                         "error": type(e).__name__}
@@ -1641,7 +1661,10 @@ class Handler(SimpleHTTPRequestHandler):
             sid = str(body.get("site") or "")
             site = learn.get_site(sid) if sid else None
             signer = str(body.get("name") or "").strip()[:20]
-            card = learn.memorial_card(user, prog, site=site, cfg=llm_config(), signer=signer)
+            card = learn.memorial_card(user, prog, site=site, cfg=llm_config(), signer=signer,
+                                       region=str(body.get("region") or DEFAULT_REGION),
+                                       brand=region_copy(str(body.get("region") or DEFAULT_REGION))["brand"],
+                                       card_head=region_copy(str(body.get("region") or DEFAULT_REGION))["cardHead"])
             append_log({"event": "memorial", "user": user, "q": sid or "ALL"})
             return self._json({"ok": True, "card": card})
 
@@ -1667,7 +1690,8 @@ class Handler(SimpleHTTPRequestHandler):
             for k in kws[:2]:
                 combos.append(["延安", k])
                 combos.append([k, "延安"])
-            combos.append(["延安"])
+            _rc = region_copy(str(body.get("region") or DEFAULT_REGION))
+            combos.append(_rc["keywords"][:1] or ["延安"])
             seen_combo, uniq = set(), []
             for c in combos:
                 c = [x for x in c if x]
