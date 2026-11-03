@@ -102,7 +102,8 @@ SITE_BY_NO = {s["no"]: s for s in POOL if s["no"]}
 
 def site_list():
     return [{"id": s["id"], "no": s["no"], "name": s["name"], "short": s["short"],
-             "level": s["level"], "kind": s["kind"]} for s in POOL]
+             "level": s["level"], "kind": s["kind"],
+             "region": s.get("region") or "yanan"} for s in POOL]
 
 
 def get_site(sid):
