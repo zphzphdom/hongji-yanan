@@ -57,12 +57,16 @@ def _tags(site):
 
 def _county(site):
     addr = site.get("address") or ""
-    m = re.search(r"([\u4e00-\u9fa5]{2,3}(?:县|区|市))", addr)
+    # 「山西省长治市武乡县」→ 去掉省名再匹配，避免解析成「省长治市」
+    if "省" in addr:
+        addr = addr.split("省", 1)[1]
+    m = re.search(r"([\u4e00-\u9fa5]{2,4}(?:县|区|市))", addr)
     if m:
         return m.group(1)
-    if site["kind"] == "deep":
+    # 延安的深度点位默认在宝塔区；其他地区按地址判断，避免混成同一片区
+    if (site.get("region") or "yanan") == "yanan" and site["kind"] == "deep":
         return "宝塔区"
-    return "其他"
+    return (site.get("region") or "其他")
 
 
 def _score(site, interest, identity):
@@ -99,14 +103,14 @@ def _why(site, interest, identity):
     return "，".join(bits) + "。" + tail
 
 
-def plan_route(identity, stage, interest, days=1, note=""):
+def plan_route(identity, stage, interest, days=1, note="", region="yanan"):
     """按天数排线：一天一个片区（县区），片区内按得分取点位，避免跨县折返。"""
     try:
         days = max(1, min(7, int(days)))
     except Exception:
         days = 1
     need = days * 3
-    pool = _pool()
+    pool = [x for x in _pool() if (x.get("region") or "yanan") == region] or _pool()
 
     # 去掉与深度点位重复的组合景区子项，并按名称去重
     seen_name, uniq = set(), []
@@ -162,7 +166,8 @@ def plan_route(identity, stage, interest, days=1, note=""):
         counties.remove("宝塔区")
         counties.insert(0, "宝塔区")
 
-    deep_cap = max(1, need // 2)
+    # 深度点位上限：延安点位多，限一半以避免全是核心点；小地区点位本就少，不设限
+    deep_cap = need if len(pool) <= need * 2 else max(1, need // 2)
     picked, used, deep_used = [], set(), 0
 
     def take(c, want):
@@ -189,9 +194,17 @@ def plan_route(identity, stage, interest, days=1, note=""):
     # 一天一个片区，按县区强度依次填
     day_groups = []
     ci = 0
-    while len(day_groups) < days and ci < len(counties) * 2:
+    while len(day_groups) < days and ci < len(counties) * 3:
         c = counties[ci % len(counties)]
         got = take(c, 3)
+        # 片区点位不足一天时，从后续片区继续补满（不空转）
+        while len(got) < 3 and ci + 1 < len(counties) * 3:
+            ci += 1
+            c2 = counties[ci % len(counties)]
+            more = take(c2, 3 - len(got))
+            if not more:
+                break
+            got.extend(more)
         if got:
             day_groups.append((c, got))
         ci += 1
@@ -244,7 +257,13 @@ TITLES = [
 ]
 
 
-def greet(identity, stage, interest, days, note, route, cfg=None):
+def greet(identity, stage, interest, days, note, route, cfg=None, region="yanan"):
+    import server as _sv
+    region_name = ""
+    try:
+        region_name = _sv.region_name(region)
+    except Exception:
+        region_name = ""
     who = IDENT_TXT.get(identity, "朋友")
     topic = INTERESTS.get(interest, "革命旧址与事件")
     if identity == "student":
@@ -261,6 +280,8 @@ def greet(identity, stage, interest, days, note, route, cfg=None):
     import random as _r
     fields = {"label": label, "topic": topic, "days": days, "n": len(route),
               "who": who}
+    if region_name:
+        fields["label"] = "%s·%s" % (region_name, label)
     title = _r.choice(TITLES).format(**fields)
 
     names = [x["name"] for x in route[:3]]
@@ -378,3 +399,41 @@ def web_brief(interest, note, cfg=None, timeout=8):
     except Exception:
         pass
     return out
+
+
+# ---------------------------------------------------------------- 社交平台参考
+# 小红书 / 抖音 未开放免费搜索 API：用站点定向检索取公开网页标题做参考信号
+SOCIAL_SITES = [
+    ("小红书", "xiaohongshu.com"),
+    ("抖音", "douyin.com"),
+    ("哔哩哔哩", "bilibili.com"),
+]
+
+
+def social_brief(route, region_name="延安", cfg=None, timeout=8):
+    """按点位关键词检索社交平台上的公开讨论标题，作为线路参考（不伪造数据）。"""
+    import server as S
+    out = []
+    cfg = cfg or S.llm_config()
+    if not cfg.get("key"):
+        return out
+    names = [r["short"] for r in route[:3]] or ["延安"]
+    for label, domain in SOCIAL_SITES:
+        q = "%s %s site:%s" % (region_name, " ".join(names[:2]), domain)
+        try:
+            hits = S.ds_search(cfg, q, timeout=timeout)[:2]
+        except Exception:
+            hits = []
+        for h in hits:
+            url = h.get("url") or ""
+            title = (h.get("title") or "").strip()
+            if domain.split(".")[0] not in url:
+                continue
+            # 过滤空标题、导航页、与主题无关的杂项
+            if len(title) < 8:
+                continue
+            if any(bad in title for bad in ("热门分类", "加载中", "登录", "首页", "搜索结果")):
+                continue
+            out.append({"platform": label, "title": title,
+                        "url": url, "site": h.get("site") or ""})
+    return out[:6]
