@@ -427,20 +427,21 @@ def judge(site, task, choice=None, text=None, image=None, cfg=None):
 
 
 # ---------------------------------------------------------------- 纪念卡
-def memorial_card(user, progress, site=None, cfg=None, signer=""):
+def memorial_card(user, progress, site=None, cfg=None, signer="", region="yanan", brand="红迹·延安", card_head="红迹·延安 · 展览点位学习"):
     done = [s for s in progress["sites"] if s["done"]]
     if site:
-        line = "我在延安的「%s」完成了展陈学习。" % site["name"]
+        line = "我在%s的「%s」完成了展陈学习。" % (brand.split("·")[-1] or "延安", site["name"])
         title = "点位完成纪念卡"
     elif progress["allDone"]:
-        line = "我走完了这条线路的 %d 个点位，全部完成。" % progress["total"]
+        line = "我走完了%s这条线路的 %d 个点位，全部完成。" % (brand.split("·")[-1] or "延安", progress["total"])
         title = "全线完成纪念卡"
     else:
-        line = "我在延安已完成 %d/%d 个点位。" % (progress["done"], progress["total"])
+        line = "我在%s已完成 %d/%d 个点位。" % (brand.split("·")[-1] or "延安", progress["done"], progress["total"])
         title = "进度纪念卡"
     names = "、".join(s["name"] for s in done) or "暂无"
     return {"title": title, "line": line, "detail": "已完成：%s" % names,
             "percent": progress["percent"], "done": progress["done"],
             "total": progress["total"], "allDone": progress["allDone"],
             "user": (signer or "").strip()[:20],
+            "region": region, "brand": brand, "cardHead": card_head,
             "badge": "全线完成" if progress["allDone"] else ("%d/%d" % (progress["done"], progress["total"]))}
