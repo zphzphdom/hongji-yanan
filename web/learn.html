@@ -79,6 +79,15 @@
       <div class="site-head"><span class="site-no" id="introNo">01</span>
         <div><h2 class="step-title" id="introName"></h2><div class="muted" id="introLevel"></div></div></div>
       <div class="card intro-card" id="introText"></div>
+      <div class="geo-card hidden" id="geoCard">
+        <canvas id="geoCanvas" width="640" height="300"></canvas>
+        <div class="geo-info" id="geoInfo"></div>
+        <div class="geo-acts">
+          <a class="geo-btn primary" id="geoNav" href="#" target="_blank" rel="noopener">开始导航</a>
+          <a class="geo-btn" id="geoOpen" href="#" target="_blank" rel="noopener">在高德地图打开</a>
+        </div>
+        <div class="geo-tip" id="geoTip"></div>
+      </div>
       <button class="btn-primary" id="toTask2">领取本点位任务</button>
       <button class="btn ghost" id="backPlan">返回线路</button>
     </section>
