@@ -40,7 +40,8 @@ SCENIC_REF = {"name": "延安市文化和旅游局", "doc": "延安市A级旅游
 def _build_pool():
     pool = []
     for s in _DEEP:
-        pool.append({"id": s["id"], "no": s["no"], "name": s["name"], "short": s["short"],
+        pool.append({"region": "yanan",
+                     "id": s["id"], "no": s["no"], "name": s["name"], "short": s["short"],
                      "level": s["level"], "kind": "deep", "intro": s["intro"],
                      "knowledge": s["knowledge"], "ref": s.get("ref"),
                      "tour": s.get("party", {}).get("tour") or [],
@@ -53,7 +54,8 @@ def _build_pool():
             item["name"], item["level"],
             "免费开放。" if free else "门票旺季 %s 元、淡季 %s 元。" % (item["priceHigh"], item["priceLow"]),
             item.get("hours", ""), item.get("address", ""))
-        pool.append({"id": sid, "no": int(item["no"]) if str(item["no"]).isdigit() else 0,
+        pool.append({"region": "yanan",
+                     "id": sid, "no": int(item["no"]) if str(item["no"]).isdigit() else 0,
                      "name": item["name"], "short": item["name"].replace("景区", ""),
                      "level": item["level"], "kind": "scenic", "intro": intro,
                      "knowledge": [("等级", item["level"]),
@@ -66,7 +68,34 @@ def _build_pool():
     return pool
 
 
-POOL = _build_pool()
+def _load_region_sites():
+    """把各地区自带的点位并入池子，带上 region 标记。"""
+    out = []
+    base = os.path.join(DATA, "regions")
+    if not os.path.isdir(base):
+        return out
+    for fn in os.listdir(base):
+        if not fn.endswith(".json") or fn.startswith("_"):
+            continue
+        rid = fn[:-5]
+        try:
+            d = json.load(open(os.path.join(base, fn), encoding="utf-8"))
+        except Exception:
+            continue
+        for s2 in (d.get("sites") or []):
+            it = dict(s2)
+            it["kind"] = it.get("kind") or "deep"
+            it["region"] = rid
+            it.setdefault("address", "")
+            it.setdefault("hours", "")
+            it.setdefault("phone", "")
+            it.setdefault("priceHigh", "")
+            out.append(it)
+    return out
+
+
+REGION_SITES = _load_region_sites()
+POOL = _build_pool() + REGION_SITES
 SITE_MAP = {s["id"]: s for s in POOL}
 SITE_BY_NO = {s["no"]: s for s in POOL if s["no"]}
 
