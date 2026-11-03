@@ -148,6 +148,82 @@ def whoami(handler):
            "label": u["label"], "allow": u["allow"]}
 
 
+# ---------------------------------------------------------------- 地理与导航
+
+GEO_PATH = os.path.join(DATA, "geo.json")
+GEO = read_json(GEO_PATH, {"sites": {}, "counties": {}}) or {"sites": {}, "counties": {}}
+
+
+def _haversine(a, b):
+    """两点直线距离（公里）。a/b = (lat, lng)。"""
+    import math as _m
+    lat1, lon1 = a
+    lat2, lon2 = b
+    r = 6371.0
+    dlat = _m.radians(lat2 - lat1)
+    dlon = _m.radians(lon2 - lon1)
+    h = (_m.sin(dlat / 2) ** 2 +
+         _m.cos(_m.radians(lat1)) * _m.cos(_m.radians(lat2)) * _m.sin(dlon / 2) ** 2)
+    return round(2 * r * _m.asin(min(1, _m.sqrt(h))), 1)
+
+
+def geo_of(site, from_lat=None, from_lng=None):
+    """给一个点位，返回坐标、距离与高德链接。坐标缺失时回落到所在县区中心。"""
+    info = GEO.get("sites", {}).get(site["id"]) or {}
+    lat, lng = info.get("lat"), info.get("lng")
+    approx = False
+    if lat is None or lng is None:
+        county = info.get("county") or ""
+        addr = site.get("address") or ""
+        if "省" in addr:
+            addr = addr.split("省", 1)[1]
+        counties = GEO.get("counties", {})
+        cands = [c for c in counties if c and c in addr]
+        county = (site.get("county") or "") or (min(cands, key=len) if cands else "")
+        c = counties.get(county)
+        if not c and county:
+            # 前缀/包含匹配兜底（如「宝塔区新区」→「宝塔区」）
+            for k in sorted(counties, key=len):
+                if k in county or county in k:
+                    c = counties[k]
+                    county = k
+                    break
+        if not c:
+            # 最后兜底：按地区取中心点
+            rid = site.get("region") or "yanan"
+            c = counties.get("宝塔区") if rid == "yanan" else counties.get("武乡县")
+        if c:
+            lat, lng = c[0], c[1]
+            approx = True
+    if lat is None or lng is None:
+        return None
+
+    name = site["name"]
+    out = {"ok": True, "id": site["id"], "name": name,
+           "lat": lat, "lng": lng, "approx": approx,
+           "county": info.get("county") or county or "", "city": info.get("city") or "",
+           "addr": info.get("addr") or site.get("address") or "",
+           "amap": {
+               "marker": "https://uri.amap.com/marker?position=%.5f,%.5f&name=%s&src=hongji&coordinate=gaode&callnative=1"
+                         % (lng, lat, urllib.parse.quote(name)),
+               "nav": "https://uri.amap.com/navigation?to=%.5f,%.5f,%s&mode=car&policy=1&src=hongji&coordinate=gaode&callnative=1"
+                      % (lng, lat, urllib.parse.quote(name)),
+           }}
+    if from_lat is not None and from_lng is not None:
+        try:
+            km = _haversine((float(from_lat), float(from_lng)), (lat, lng))
+            out["from"] = {"lat": float(from_lat), "lng": float(from_lng)}
+            out["distanceKm"] = km
+            out["driveMin"] = max(5, int(round(km / 45 * 60)))     # 按 45km/h 估算
+            out["amap"]["navFrom"] = (
+                "https://uri.amap.com/navigation?from=%.5f,%.5f,当前位置&to=%.5f,%.5f,%s"
+                "&mode=car&policy=1&src=hongji&coordinate=gaode&callnative=1"
+                % (float(from_lng), float(from_lat), lng, lat, urllib.parse.quote(name)))
+        except Exception:
+            pass
+    return out
+
+
 # ---------------------------------------------------------------- 多地区
 
 REGIONS_DIR = os.path.join(DATA, "regions")
@@ -1313,6 +1389,23 @@ class Handler(SimpleHTTPRequestHandler):
                 return
         if path == "/api/health":
             return self._json({"ok": True, "t": int(time.time())})
+        if path == "/api/geo":
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            sid = (qs.get("site") or [""])[0]
+            site = learn.get_site(sid)
+            if not site:
+                return self._json({"ok": False, "error": "unknown_site"}, 404)
+            try:
+                flat = float((qs.get("lat") or [""])[0])
+                flng = float((qs.get("lng") or [""])[0])
+            except Exception:
+                flat = flng = None
+            g = geo_of(site, flat, flng)
+            if not g:
+                return self._json({"ok": False, "error": "no_coord",
+                                   "name": site["name"]})
+            return self._json(g)
+
         if path == "/api/regions":
             return self._json(region_index())
         if path == "/api/kb":
