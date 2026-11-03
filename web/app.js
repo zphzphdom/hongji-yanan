@@ -24,7 +24,7 @@
     if (LLM) meta += ' · ' + LLM;
     var box = $('#kbMeta');
     if (box) box.textContent = meta;
-    renderChips();
+    renderChips(REGION);
   }
 
   function refresh() {
@@ -120,11 +120,20 @@
   }
 
   /* ---------------- 渲染 ---------------- */
-  function renderChips() {
+  var CHIPS_BY_REGION = {
+    yanan: ['宝塔山有多高？', '党的七大什么时候开的？', '南泥湾大生产是怎么回事？',
+            '枣园的纺车说明了什么？', '延安精神包含哪些内容？', '壶口瀑布在哪个县？'],
+    shanxi: ['八路军太行纪念馆什么时候建成的？', '平型关大捷是什么时候打的？',
+             '平型关大捷战果如何？', '乔沟为什么适合伏击？', '红军东征历时多少天？',
+             '八路军抗战史陈列分几个部分？']
+  };
+
+  function renderChips(region) {
     var box = $('#chips');
     if (!box) return;
     box.innerHTML = '';
-    CHIPS.forEach(function (q, i) {
+    var list = CHIPS_BY_REGION[region || REGION] || CHIPS;
+    list.forEach(function (q, i) {
       var b = document.createElement('button');
       b.className = 'chip';
       b.textContent = q.replace(/？$/, '');
@@ -200,6 +209,8 @@
     // 先图后文：图片能立刻给出讲的是哪个点，正文随后出
     // 先出文字，再异步补一张联网图（不阻塞回答）
     b.appendChild(a);
+    var kbBox = kbHitsBlock(r);
+    if (kbBox) b.appendChild(kbBox);
     if (r.imageUrl) {
       b.appendChild(imageBlock({ src: r.imageUrl, alt: r.imageAlt || '',
                                  credit: r.imageCredit || '图源：网络', fallback: '' }));
@@ -293,6 +304,25 @@
         body: JSON.stringify({ q: q, mode: mode, id: r.entryId || null, refused: !!r.refused, score: r.score || 0 })
       }).catch(function () {});
     } catch (e) {}
+  }
+
+
+  /* ---------------- 命中条目（编号 + 字数） ---------------- */
+  function kbHitsBlock(r) {
+    var list = r.kb || [];
+    if (!list.length) return null;
+    var box = el('div', 'kbhits');
+    box.appendChild(el('div', 'kbh-title', '命中条目（' + list.length + ' 条）'));
+    list.forEach(function (k) {
+      var row = el('div', 'kbh-row');
+      var left = el('span', 'kbh-id', k.id || '—');
+      var q = el('span', 'kbh-q', (k.q || ''));
+      var meta = el('span', 'kbh-meta',
+        (k.chars || 0) + ' 字' + (k.kind === 'variant' ? ' · 同义问法' : ''));
+      row.appendChild(left); row.appendChild(q); row.appendChild(meta);
+      box.appendChild(row);
+    });
+    return box;
   }
 
   /* ---------------- 来源详情 ---------------- */
