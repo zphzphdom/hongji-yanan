@@ -5,18 +5,28 @@
    "name": "延安",
    "subtitle": "中共中央十三年 · 陕北",
    "accent": "#8C1F28",
-   "count": 940,
-   "chars": 57392,
-   "sources": 53
+   "count": 1410,
+   "chars": 115845,
+   "sources": 53,
+   "kinds": {
+    "史实": 424,
+    "variant": 940,
+    "服务信息": 38,
+    "拒答样板": 8
+   }
   },
   {
    "id": "shanxi",
    "name": "山西",
    "subtitle": "太行山 · 晋绥 · 抗战前沿",
    "accent": "#7A3E1D",
-   "count": 66,
-   "chars": 4649,
-   "sources": 3
+   "count": 99,
+   "chars": 7983,
+   "sources": 3,
+   "kinds": {
+    "fact": 33,
+    "variant": 66
+   }
   }
  ]
 }
