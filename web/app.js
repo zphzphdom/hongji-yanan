@@ -2,7 +2,13 @@
   'use strict';
   var E = window.RedEngine;
   var $ = function (s) { return document.querySelector(s); };
-  var REGION = (function(){ try { return localStorage.getItem('hy_region') || 'yanan'; } catch(e){ return 'yanan'; } })(),
+  var REGION = (function () {
+    try {
+      var m = new URLSearchParams(location.search).get('r');
+      if (m) { localStorage.setItem('hy_region', m); return m; }
+      return localStorage.getItem('hy_region') || 'yanan';
+    } catch (e) { return 'yanan'; }
+  })(),
     REGIONS = [], REGION_META = null;
   var KB = window.RED_KB, idx = null, mode = 'fact', lastAnswer = null, qrImg = null, LLM = null, sending = false, cardImg = null, cardImgKey = '';
 
@@ -40,6 +46,31 @@
   }
 
 
+
+  function applyRegionCopy(meta) {
+    if (!meta) return;
+    var brand = meta.brand || ('红迹·' + (meta.name || '延安'));
+    var ai = meta.aiName || '延小讲';
+    document.title = meta.title || (brand + ' · AI 讲解员');
+    var bn = document.querySelector('.brand-name');
+    if (bn) bn.textContent = brand;
+    var sub = document.querySelector('.brand-sub');
+    if (sub) sub.textContent = ai + ' · 有出处的讲解员';
+    var hero = document.querySelector('.hero h1, .hero-title');
+    if (hero) hero.textContent = meta.hero || hero.textContent;
+    var hs = document.querySelector('.hero p, .hero-sub');
+    if (hs) hs.textContent = meta.heroSub || hs.textContent;
+    var inp = $('#input');
+    if (inp) inp.placeholder = meta.placeholder || inp.placeholder;
+    var foot = $('#footBrand');
+    if (foot) foot.textContent = brand;
+    var per = document.querySelector('.hero-period');
+    if (per) per.textContent = meta.period || per.textContent;
+    document.documentElement.style.setProperty('--region-accent', meta.accent || '#8C1F28');
+    var intro = document.querySelector('.intro-line');
+    if (intro) intro.textContent = '我是' + ai + '，' + (meta.name || '延安') + '的讲解员。';
+  }
+
   /* ---------------- 地区切换 ---------------- */
   function renderRegionBar() {
     var bar = $('#regionBar');
@@ -74,9 +105,7 @@
       setTimeout(function () { app.classList.remove('region-switching'); }, 420);
     }
     document.documentElement.style.setProperty('--region-accent', meta.accent || '#8C1F28');
-    var title = document.querySelector('.brand-name');
-    if (title) title.textContent = '红迹·' + (meta.name || '延安');
-    document.title = '红迹·' + (meta.name || '延安') + ' · AI 讲解员';
+    applyRegionCopy(meta);
     renderRegionBar();
     loadRegionKb(rid);
     toast('已切换到「' + (meta.name || rid) + '」');
@@ -112,9 +141,7 @@
         if (!REGIONS.some(function (x) { return x.id === REGION; })) REGION = REGIONS[0].id;
         REGION_META = REGIONS.filter(function (x) { return x.id === REGION; })[0];
         renderRegionBar();
-        var title = document.querySelector('.brand-name');
-        if (title) title.textContent = '红迹·' + (REGION_META.name || '延安');
-        document.documentElement.style.setProperty('--region-accent', REGION_META.accent || '#8C1F28');
+        applyRegionCopy(REGION_META);
         loadRegionKb(REGION);
       }).catch(function () {});
   }
@@ -557,13 +584,13 @@
     // 头部
     g.fillStyle = '#FFFFFF';
     g.font = '700 74px "Songti SC","SimSun",serif';
-    g.fillText('红迹·延安', 80, 140);
+    g.fillText((REGION_META && REGION_META.brand) || '红迹·延安', 80, 140);
     g.fillStyle = 'rgba(250,245,239,.86)';
     g.font = '400 30px "PingFang SC","Microsoft YaHei",sans-serif';
-    g.fillText('AI 讲解员 · 延小讲｜在延安，问一句有出处的话', 80, 196);
+    g.fillText(((REGION_META && (REGION_META.aiName + ' · ' + REGION_META.name)) || 'AI 讲解员 · 延小讲') + '｜有出处的话', 80, 196);
     g.fillStyle = 'rgba(176,134,58,.95)';
     g.font = '400 24px "PingFang SC",sans-serif';
-    g.fillText('延安 · 1935—1948', 80, 250);
+    g.fillText((REGION_META && REGION_META.period) || '延安 · 1935—1948', 80, 250);
 
     var y = 388;
     g.fillStyle = '#B0863A';
@@ -653,7 +680,7 @@
     g.fillText('我问到了什么，也留下了出处。', 80, H - 120);
     g.fillStyle = '#A6978E';
     g.font = '400 20px "PingFang SC",sans-serif';
-    g.fillText('红迹·延安 · 只答有来源的史实', 80, H - 78);
+    g.fillText(((REGION_META && REGION_META.brand) || '红迹·延安') + ' · 只答有来源的史实', 80, H - 78);
 
     // 角标
     g.fillStyle = 'rgba(140,31,40,.9)';
@@ -745,7 +772,7 @@
       c.toBlob(function (blob) {
         var a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = '红迹延安-问答卡.png';
+        a.download = ((REGION_META && REGION_META.brand) || '红迹·延安') + '-问答卡.png';
         a.click();
         setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
         toast('已保存到相册/下载目录');
