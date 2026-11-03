@@ -148,6 +148,38 @@ def whoami(handler):
            "label": u["label"], "allow": u["allow"]}
 
 
+# ---------------------------------------------------------------- 多地区
+
+REGIONS_DIR = os.path.join(DATA, "regions")
+REGION_CACHE = {}
+DEFAULT_REGION = "yanan"
+
+
+def region_index():
+    path = os.path.join(REGIONS_DIR, "_index.json")
+    return read_json(path, {"regions": []}) or {"regions": []}
+
+
+def region_meta(rid):
+    for r in region_index().get("regions", []):
+        if r.get("id") == rid:
+            return r
+    return None
+
+
+def region_file(rid):
+    rid = (rid or DEFAULT_REGION).strip().lower()
+    if not re.fullmatch(r"[a-z]{2,12}", rid):
+        rid = DEFAULT_REGION
+    path = os.path.join(REGIONS_DIR, rid + ".json")
+    return path if os.path.exists(path) else os.path.join(REGIONS_DIR, DEFAULT_REGION + ".json")
+
+
+def region_name(rid):
+    m = region_meta(rid) or {}
+    return m.get("name") or "延安"
+
+
 # ---------------------------------------------------------------- 知识库检索
 
 _CACHE = {"kb": None, "mtime": 0, "idx": None}
@@ -172,8 +204,13 @@ def _grams(s):
     return out
 
 
-def load_index():
-    path = os.path.join(DATA, "kb.json")
+def load_index(region=DEFAULT_REGION):
+    path = region_file(region)
+    key = os.path.basename(path)
+    mtime = os.path.getmtime(path) if os.path.exists(path) else 0
+    cached = REGION_CACHE.get(key)
+    if cached and cached.get("mtime") == mtime:
+        return cached["idx"], cached["kb"]
     if not os.path.exists(path):
         # 知识库已下线：只用联网 + 临时缓存（返回完整空索引，避免下游 KeyError）
         return ({"entries": [], "idf": {}, "avg": 1.0, "tags": [], "tagmap": {},
@@ -207,6 +244,7 @@ def load_index():
         "intents": sorted(intentmap, key=len, reverse=True),
     }
     _CACHE.update({"kb": kb, "mtime": mtime, "idx": idx})
+    REGION_CACHE[key] = {"mtime": mtime, "idx": idx, "kb": kb}
     return idx, kb
 
 
@@ -233,8 +271,8 @@ def _rank(idx, cands, qg, qn):
     return out
 
 
-def search_kb(q, topk=4):
-    idx, kb = load_index()
+def search_kb(q, topk=4, region=DEFAULT_REGION):
+    idx, kb = load_index(region)
     qg, qn = _grams(q), _norm(q)
     if not qg:
         return [], kb
@@ -1005,17 +1043,19 @@ def card_copy(question, answer, mode, image_key):
 # ---------------------------------------------------------------- 回答编排
 
 
-def answer(query, mode, trace=False):
+def answer(query, mode, trace=False, region=DEFAULT_REGION):
     """联网实时生成 → 知识库核查真伪 → 附来源与唯一配图。"""
     t0 = time.time()
     cfg = llm_config()
-    kb_hits, kb = search_kb(query, 3)
+    kb_hits, kb = search_kb(query, 3, region)
     # 先查临时库（30 分钟内的联网结果），没有再联网
-    web_hits = web_cache_get(query)
+    rname = region_name(region)
+    web_query = query if rname in query else (rname + " " + query)
+    web_hits = web_cache_get(web_query)
     if web_hits is None:
-        web_hits = ds_search(cfg, query)
+        web_hits = ds_search(cfg, web_query)
         if web_hits:
-            web_cache_put(query, web_hits)
+            web_cache_put(web_query, web_hits)
 
     budget = {"fact": 900, "research": 1500, "moment": 700}.get(mode, 900)
     text, err = ds_chat(cfg, query, mode, web_hits, timeout=22, budget=budget)
@@ -1036,6 +1076,8 @@ def answer(query, mode, trace=False):
     # 核查：知识库下线后改为「联网多源」判断
     if kb_hits:
         verdict = verify_against_kb(text["text"], kb_hits)
+        if "reason" not in verdict:
+            verdict["reason"] = verdict.get("note") or "已与本地库比对"
     else:
         n_src = len({(w.get("site") or "") for w in web_hits})
         if not web_hits:
@@ -1271,8 +1313,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return
         if path == "/api/health":
             return self._json({"ok": True, "t": int(time.time())})
+        if path == "/api/regions":
+            return self._json(region_index())
         if path == "/api/kb":
-            _, kb = load_index()
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            rid = (qs.get("region") or [DEFAULT_REGION])[0]
+            _, kb = load_index(rid)
+            kb = dict(kb)
+            meta = region_meta(rid) or {}
+            kb["region"] = rid
+            kb["regionName"] = meta.get("name") or "延安"
             return self._json(kb)
         if path == "/api/capabilities":
             cfg = llm_config()
@@ -1281,7 +1331,9 @@ class Handler(SimpleHTTPRequestHandler):
                 "llm": bool(cfg["key"]), "search": bool(cfg["key"] and cfg["search_on"]),
                 "model": cfg["model"] if cfg["key"] else None,
                 "modes": ["fact", "research", "moment"], "imageEveryReply": True,
-                "kb": {"count": kb.get("count"), "sources": kb.get("sources"), "version": kb.get("version")},
+                "kb": {"count": kb.get("count"), "sources": kb.get("sources"),
+                       "version": kb.get("version")},
+                "regions": region_index().get("regions", []),
             })
         if path == "/api/selftest":
             return self._json(read_json(os.path.join(DOCS, "selftest.json"), {}))
@@ -1333,8 +1385,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not q:
                 return self._json({"ok": False, "error": "empty"}, 400)
             u = whoami(self)
+            rid = str(body.get("region") or DEFAULT_REGION)
             try:
-                res = answer(q, mode)
+                res = answer(q, mode, region=rid)
             except Exception as e:
                 res = {"ok": False, "error": type(e).__name__, "text": "服务端出错了，请重试。", "image": "宝塔山"}
             append_log({
@@ -1378,11 +1431,14 @@ class Handler(SimpleHTTPRequestHandler):
                 days = 1
             days = max(1, min(7, days))
             note = str(body.get("note") or "")[:120]
-            route = plan.plan_route(identity, stage, interest, days, note)
-            head = plan.greet(identity, stage, interest, days, note, route, llm_config())
+            rid = str(body.get("region") or DEFAULT_REGION)
+            route = plan.plan_route(identity, stage, interest, days, note, region=rid)
+            head = plan.greet(identity, stage, interest, days, note, route, llm_config(),
+                              region=rid)
             scope = [r["siteId"] for r in route]
             imgs, web = plan.collect_images(route, interest, note, llm_config())
             brief = plan.web_brief(interest, note, llm_config())
+            social = plan.social_brief(route, region_name(rid), llm_config())
             # 任务：按身份给总量说明，具体每题在进入点位时下发
             task = {
                 "mode": "party" if identity == "party" else "learn",
@@ -1402,6 +1458,7 @@ class Handler(SimpleHTTPRequestHandler):
                                "label": head["label"], "route": route, "task": task, "days": days,
                                "scope": scope,
                                "images": imgs, "webImages": web, "webBrief": brief,
+                               "social": social, "region": rid, "regionName": region_name(rid),
                                "progress": learn.progress_of(u, scope)})
 
         if path == "/api/site":
