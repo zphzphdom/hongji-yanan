@@ -87,7 +87,8 @@
         <div><h2 class="step-title" id="introName"></h2><div class="muted" id="introLevel"></div></div></div>
       <div class="card intro-card" id="introText"></div>
       <div class="geo-card hidden" id="geoCard">
-        <canvas id="geoCanvas" width="640" height="300"></canvas>
+        <div id="siteMap" class="site-map"></div>
+        <div class="map-tip" id="siteMapTip"></div>
         <div class="geo-info" id="geoInfo"></div>
         <div class="geo-acts">
           <a class="geo-btn primary" id="geoNav" href="#" target="_blank" rel="noopener">开始导航</a>
@@ -128,7 +129,7 @@
     <!-- 六、完成 -->
     <section id="stepFinish" class="step hidden">
       <div class="finish-mark">✓</div>
-      <h2 class="step-title">线路全部完成</h2>
+      <h2 class="step-title" id="finishTitle">线路全部完成</h2>
       <p class="step-sub" id="finishSub"></p>
       <div class="stat-grid" id="finishStats"></div>
       <button class="btn-primary" id="finalCardBtn">生成全线纪念卡</button>
