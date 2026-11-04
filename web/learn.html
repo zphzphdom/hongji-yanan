@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#8C1F28">
 <title>红迹·延安 · 智能线路</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 <div class="learn-wrap" id="learnWrap">
@@ -52,6 +54,11 @@
 
       <div class="social-box hidden" id="socialBox"></div>
       <div class="web-brief hidden" id="webBrief"></div>
+
+      <div class="map-card">
+        <div class="map-head"><span>线路地图</span><span class="map-tip" id="mapTip">加载中…</span></div>
+        <div id="routeMap" class="route-map"></div>
+      </div>
 
       <div class="route-title">主题线路 <span class="muted" id="routeCount"></span></div>
       <div class="route" id="routeList"></div>
