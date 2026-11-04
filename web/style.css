@@ -562,3 +562,9 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .kb-region span{font-size:10.5px;color:#A6978E}
 .kb-region.on{background:var(--red);border-color:var(--red);color:#fff}
 .kb-region.on span{color:rgba(255,255,255,.8)}
+
+/* 点位真实地图 */
+.site-map{width:100%;height:240px;border-radius:10px;overflow:hidden;background:#F3ECE4;margin-bottom:8px}
+.stat-todo{background:#FBF6F0;border-style:dashed}
+.stat-todo .stat-v{color:#A6978E;font-size:18px}
+@media (max-width:480px){.site-map{height:220px}}
