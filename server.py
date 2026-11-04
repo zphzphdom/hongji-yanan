@@ -1485,7 +1485,16 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/console/kb":
             if not self._need():
                 return
-            _, kb = load_index()
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            rid = (qs.get("region") or [DEFAULT_REGION])[0]
+            _, kb = load_index(rid)
+            kb = dict(kb)
+            meta = region_meta(rid) or {}
+            kb["region"] = rid
+            kb["regionName"] = meta.get("name") or "延安"
+            kb["count"] = meta.get("count") or kb.get("count")
+            kb["chars"] = meta.get("chars") or sum(len(x.get("a") or "") for x in (kb.get("entries") or []))
+            kb["kinds"] = meta.get("kinds") or {}
             return self._json(kb)
         return super().do_GET()
 
