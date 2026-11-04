@@ -60,7 +60,10 @@ def _county(site):
     # 「山西省长治市武乡县」→ 去掉省名再匹配，避免解析成「省长治市」
     if "省" in addr:
         addr = addr.split("省", 1)[1]
-    m = re.search(r"([\u4e00-\u9fa5]{2,4}(?:县|区|市))", addr)
+    # 先找「县/区」（更具体），再退到「市」
+    m = re.search(r"([\u4e00-\u9fa5]{2,4}(?:县|区))", addr)
+    if not m:
+        m = re.search(r"([\u4e00-\u9fa5]{2,4}市)", addr)
     if m:
         return m.group(1)
     # 延安的深度点位默认在宝塔区；其他地区按地址判断，避免混成同一片区
