@@ -881,7 +881,7 @@ def vision_check(url, context, cfg=None, timeout=25):
     import io as _io
     if not url:
         return {"ok": False, "related": None, "desc": "", "reason": "no_url"}
-    key = hashlib.sha1((url + "|" + (context or "")[:80]).encode()).hexdigest()[:16]
+    key = hashlib.sha1((url[:4000] + "|" + (context or "")[:80]).encode()).hexdigest()[:16]
     cache = _vision_cache()
     if key in cache:
         return cache[key]
@@ -892,17 +892,22 @@ def vision_check(url, context, cfg=None, timeout=25):
 
     try:
         from PIL import Image
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
-        with urllib.request.urlopen(req, timeout=12) as r:
-            blob = r.read(1500000)
+        if url.startswith("data:image"):
+            # 用户上传：直接解 base64，不走网络
+            head, _, payload = url.partition(",")
+            blob = _b64.b64decode(payload + "=" * (-len(payload) % 4))
+        else:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
+            with urllib.request.urlopen(req, timeout=12) as r:
+                blob = r.read(1500000)
         im = Image.open(_io.BytesIO(blob)).convert("RGB")
         im.thumbnail((640, 640))
         buf = _io.BytesIO()
         im.save(buf, "JPEG", quality=80)
         b64 = _b64.b64encode(buf.getvalue()).decode()
     except Exception as e:
-        out = {"ok": False, "related": None, "desc": "", "reason": "download:" + type(e).__name__}
+        out = {"ok": False, "related": None, "desc": "", "reason": "decode:" + type(e).__name__}
         return out
 
     prompt = (
