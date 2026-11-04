@@ -47,6 +47,11 @@
 
 
 
+  function consoleEntryText(meta) {
+    var name = (meta && meta.name) || '延安';
+    return name + ' · 设计者入口';
+  }
+
   function applyRegionCopy(meta) {
     if (!meta) return;
     var brand = meta.brand || ('红迹·' + (meta.name || '延安'));
@@ -64,6 +69,8 @@
     if (inp) inp.placeholder = meta.placeholder || inp.placeholder;
     var foot = $('#footBrand');
     if (foot) foot.textContent = brand;
+    var ce = document.getElementById('consoleEntry');
+    if (ce) ce.textContent = consoleEntryText(meta);
     var per = document.querySelector('.hero-period');
     if (per) per.textContent = meta.period || per.textContent;
     document.documentElement.style.setProperty('--region-accent', meta.accent || '#8C1F28');
@@ -72,6 +79,54 @@
   }
 
   /* ---------------- 地区切换 ---------------- */
+
+  /* ---------------- 地区下拉 ---------------- */
+  function openRegionMenu(anchor) {
+    var old = document.getElementById('regionMenu');
+    if (old) { old.remove(); return; }
+    if (!REGIONS.length) return;
+    var box = document.createElement('div');
+    box.id = 'regionMenu';
+    box.className = 'region-menu';
+    box.innerHTML = REGIONS.map(function (r) {
+      return '<button class="rm-item' + (r.id === REGION ? ' on' : '') + '" data-rid="' + r.id + '">' +
+        '<span class="rm-name">' + r.name + '</span>' +
+        '<span class="rm-meta">' + (r.count || 0) + ' 条 · ' +
+        Math.round((r.chars || 0) / 1000) + 'k 字</span></button>';
+    }).join('');
+    var rect = anchor.getBoundingClientRect();
+    box.style.top = (rect.bottom + 8) + 'px';
+    box.style.left = Math.max(12, rect.left) + 'px';
+    document.body.appendChild(box);
+    [].forEach.call(box.children, function (b) {
+      b.onclick = function () {
+        closeRegionMenu();
+        if (b.dataset.rid !== REGION) switchRegion(b.dataset.rid);
+      };
+    });
+    setTimeout(function () {
+      document.addEventListener('click', closeRegionMenu, { once: true });
+    }, 0);
+  }
+
+  function closeRegionMenu() {
+    var m = document.getElementById('regionMenu');
+    if (m) m.remove();
+  }
+
+  function bindBrandMenu() {
+    var bn = document.querySelector('.brand-name');
+    if (!bn) return;
+    bn.classList.add('brand-clickable');
+    bn.title = '切换地区';
+    bn.onclick = function (e) { e.stopPropagation(); openRegionMenu(bn); };
+    var foot = document.getElementById('footBrand');
+    if (foot) {
+      foot.classList.add('brand-clickable');
+      foot.onclick = function (e) { e.stopPropagation(); openRegionMenu(foot); };
+    }
+  }
+
   function renderRegionBar() {
     var bar = $('#regionBar');
     if (!bar || !REGIONS.length) return;
@@ -143,6 +198,7 @@
         renderRegionBar();
         applyRegionCopy(REGION_META);
         loadRegionKb(REGION);
+        bindBrandMenu();
       }).catch(function () {});
   }
 
