@@ -84,7 +84,7 @@ def _load_region_sites():
             continue
         for s2 in (d.get("sites") or []):
             it = dict(s2)
-            it["kind"] = it.get("kind") or "deep"
+            it["kind"] = "region"
             it["region"] = rid
             it.setdefault("address", "")
             it.setdefault("hours", "")
