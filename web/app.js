@@ -526,7 +526,7 @@
     drawCard(r, question);
     $('#cardMask').classList.remove('hidden');
     // 卡片文案走服务端：每次联网现生成，并保证不与历史卡片重复
-    api('/api/card', { question: question, answer: r.text, mode: r.mode, image: r.image || '' })
+    api('/api/card', { question: question, answer: r.text, mode: r.mode, image: r.image || '', region: REGION })
       .then(function (j) {
         if (j && j.ok && j.lines && j.lines.length) {
           r.cardLines = j.lines;
@@ -848,6 +848,7 @@
   function openConsole() {
     $('#appView').classList.add('hidden');
     $('#consoleView').classList.remove('hidden');
+    kbRegion = kbRegion || REGION;
     loadTab('dash');
   }
 
@@ -915,18 +916,49 @@
     });
   }
 
+
+  var kbRegion = null;
+
+  function kbRegionBar() {
+    var list = (REGIONS || []).map(function (r) {
+      var on = (kbRegion || REGION) === r.id ? ' on' : '';
+      return '<button class="kb-region' + on + '" data-rid="' + r.id + '">' +
+        r.name + '<span>' + (r.count || 0) + ' 条</span></button>';
+    }).join('');
+    return '<div class="kb-regionbar" id="kbRegionSelect">' + list + '</div>';
+  }
+
+  function bindKbRegionBar() {
+    var bar = $('#kbRegionSelect');
+    if (!bar) return;
+    [].forEach.call(bar.children, function (b) {
+      b.onclick = function () {
+        kbRegion = b.dataset.rid;
+        loadKbConsole();
+      };
+    });
+  }
+
   function loadKbConsole() {
-    api('/api/console/kb').then(function (kb) {
+    api('/api/console/kb?region=' + (kbRegion || REGION)).then(function (kb) {
       var rows = (kb.entries || []).map(function (e) {
         var s = (e.sources || [{}])[0];
         return '<tr><td>' + e.id + '</td><td class="q">' + esc(e.q) + '</td><td class="q">' +
-          esc(String(e.a || '').slice(0, 60)) + '…</td><td>' + (e.kind || '') + '</td><td>' +
+          esc(String(e.a || '').slice(0, 60)) + '…</td><td>' + ((e.a || '').length) +
+          ' 字</td><td>' + (e.kind || '') + '</td><td>' +
           (e.image || '') + '</td><td>' + esc(s.org || '') + '<br><span class="muted">' + esc(s.date || '') + '</span></td></tr>';
       }).join('');
-      $('#tab-kb').innerHTML = '<div class="section-title">联网缓存 · ' + kb.count + ' 条 / ' + kb.sources +
-        ' 个来源 · v' + kb.version + '</div>' +
+      var kinds = kb.kinds || {};
+      var nchars = kb.chars || (kb.entries || []).reduce(function (a, e) {
+        return a + ((e.a || '').length); }, 0);
+      $('#tab-kb').innerHTML = kbRegionBar() +
+        '<div class="section-title">' + (kb.regionName || '') + ' · ' + kb.count + ' 条 · ' +
+        nchars.toLocaleString() + ' 字 · ' + kb.sources + ' 个来源 · v' + kb.version +
+        ' ｜ 官方事实 ' + (kinds.fact || 0) + ' · 变体 ' + (kinds.variant || 0) + '</div>' +
         '<div class="table-wrap"><table class="log-table"><thead><tr><th>编号</th><th>问题</th><th>标准回答</th>' +
-        '<th>类型</th><th>配图</th><th>来源</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        '<th>字数</th><th>类型</th><th>配图</th><th>来源</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="muted" style="margin-top:10px">共 ' + (kb.entries || []).length + ' 条</div>';
+      bindKbRegionBar();
     });
   }
 
