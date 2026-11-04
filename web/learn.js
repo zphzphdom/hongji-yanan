@@ -267,6 +267,16 @@
     renderGallery(j.images || [], j.webImages || []);
     renderWebBrief(j.webBrief || []);
     renderSocial(j.social || []);
+    var rt = state.route || [];
+    enrichRouteGeo(rt, function () {
+      // 相邻点位直线距离
+      for (var k = 0; k < rt.length - 1; k++) {
+        if (rt[k].geo && rt[k + 1].geo) {
+          rt[k].legKm = haversineKm(rt[k].geo, rt[k + 1].geo).toFixed(1);
+        }
+      }
+      initRouteMap(rt);
+    });
 
     var list = $('#routeList');
     list.innerHTML = '';
@@ -535,6 +545,111 @@
     ctx.fillStyle = '#A6978E';
     ctx.font = '400 11px "PingFang SC",sans-serif';
     ctx.fillText('示意图（非实际路网）', 12, H - 12);
+  }
+
+
+  /* ---------------- 线路地图（真实瓦片） ---------------- */
+  var rmap = null, rlayers = [], userMarker = null;
+
+  function mapTile(url, opts) { return L.tileLayer(url, opts); }
+
+  function initRouteMap(route) {
+    var box = $('#routeMap');
+    if (!box) return;
+    if (typeof L === 'undefined') {
+      box.innerHTML = '<div class="map-fallback">地图组件未加载，已显示点位列表；' +
+        '可点下方「开始导航」用高德地图查看。</div>';
+      var tip0 = $('#mapTip'); if (tip0) tip0.textContent = '示意图模式';
+      return;
+    }
+    if (rmap) { rmap.remove(); rmap = null; }
+    rlayers = [];
+    rmap = L.map(box, { zoomControl: true, attributionControl: false }).setView([36.6, 109.5], 7);
+
+    // 高德瓦片（GCJ-02，无需 Key），失败退回 OSM
+    var amap = mapTile(
+      'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+      { subdomains: '1234', maxZoom: 18, detectRetina: false });
+    var osm = mapTile('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+    var switched = false;
+    amap.on('tileerror', function () {
+      if (switched) return;
+      switched = true;
+      rmap.removeLayer(amap);
+      osm.addTo(rmap);
+      var t = $('#mapTip'); if (t) t.textContent = '已切换备用瓦片';
+    });
+    amap.addTo(rmap);
+
+    var pts = [];
+    (route || []).forEach(function (r, i) {
+      var g = r.geo;
+      if (!g) return;
+      var latlng = [g.lat, g.lng];
+      pts.push(latlng);
+      var dist = r.legKm != null ? ('距下一点约 ' + r.legKm + ' 公里') : '';
+      var html = '<div class="mp"><div class="mp-t">' + (i + 1) + '. ' + (r.name || '') + '</div>' +
+        '<div class="mp-d">' + (r.why || '') + '</div>' +
+        (g.addr ? '<div class="mp-a">' + g.addr + '</div>' : '') +
+        (dist ? '<div class="mp-a">' + dist + '</div>' : '') +
+        '<div class="mp-acts">' +
+        '<a class="mp-btn primary" target="_blank" rel="noopener" href="' + (g.navFrom || g.nav) + '">开始导航</a>' +
+        '<a class="mp-btn" target="_blank" rel="noopener" href="' + (g.search || g.marker) + '">按名称搜</a>' +
+        '</div></div>';
+      var m = L.marker(latlng, {
+        icon: L.divIcon({ className: 'mp-pin', html: '<span>' + (i + 1) + '</span>',
+                          iconSize: [28, 28], iconAnchor: [14, 14] })
+      }).addTo(rmap).bindPopup(html, { maxWidth: 260 });
+      rlayers.push(m);
+    });
+
+    if (pts.length > 1) {
+      var line = L.polyline(pts, { color: '#8C1F28', weight: 3, opacity: .85, dashArray: '6 6' })
+        .addTo(rmap);
+      rlayers.push(line);
+    }
+    if (pts.length) {
+      rmap.fitBounds(L.latLngBounds(pts).pad(0.25));
+    }
+
+    // 设备定位：加一个「我的位置」标记，并刷新各点距离
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        var me = [p.coords.latitude, p.coords.longitude];
+        if (userMarker) rmap.removeLayer(userMarker);
+        userMarker = L.marker(me, { icon: L.divIcon({ className: 'mp-me', html: '<span>我</span>',
+                                                     iconSize: [26, 26], iconAnchor: [13, 13] }) })
+          .addTo(rmap).bindPopup('我的位置');
+        rlayers.push(userMarker);
+        rmap.fitBounds(L.latLngBounds(pts.concat([me])).pad(0.2));
+        var t = $('#mapTip');
+        if (t) t.textContent = '已定位 · 点到点距离见标点弹窗';
+      }, function () {
+        var t = $('#mapTip');
+        if (t) t.textContent = '未授权定位 · 仍可查看线路';
+      }, { timeout: 5000, maximumAge: 60000 });
+    } else {
+      var t2 = $('#mapTip');
+      if (t2) t2.textContent = '设备不支持定位';
+    }
+
+    setTimeout(function () { if (rmap) rmap.invalidateSize(); }, 200);
+  }
+
+  // 给线路补上坐标与相邻距离
+  function enrichRouteGeo(route, done) {
+    var i = 0;
+    function next() {
+      if (i >= route.length) { done(); return; }
+      var r = route[i];
+      getJSON('/api/geo?site=' + encodeURIComponent(r.siteId)).then(function (g) {
+        if (g && g.ok) r.geo = g;
+      }).catch(function () {}).then(function () {
+        i += 1;
+        next();
+      });
+    }
+    next();
   }
 
   /* ---------------- 三、点位讲解 ---------------- */
