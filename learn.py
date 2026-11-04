@@ -327,6 +327,15 @@ def _norm(s):
     return re.sub(r"[\s，。！？、；：\"'（）()《》·.,!?;:]", "", str(s or "")).lower()
 
 
+def check_submission_image(site, task, image, cfg=None):
+    """识别用户上传的照片：返回 {ok, related, desc}。失败返回 ok=False（不拦完成）。"""
+    if not image:
+        return {"ok": False, "related": None, "desc": "", "reason": "no_image"}
+    import server as S
+    ctx = "%s。任务：%s" % (site.get("name") or "", (task.get("question") or {}).get("q") or "")
+    return S.vision_check(image, ctx, cfg or S.llm_config())
+
+
 def judge(site, task, choice=None, text=None, image=None, cfg=None):
     if task["mode"] == "party":
         qs = task.get("questions") or []
@@ -414,6 +423,15 @@ def judge(site, task, choice=None, text=None, image=None, cfg=None):
         except Exception:
             ai = ""
 
+    vision_note = ""
+    if image:
+        v = check_submission_image(site, task, image, cfg)
+        if v.get("ok"):
+            if v.get("related") is True:
+                vision_note = "照片识别为「%s」，与本题相关。" % (v.get("desc") or "现场照片")
+            elif v.get("related") is False:
+                vision_note = "照片识别为「%s」，与本题不太像；任务仍记完成，建议下次拍展签或点位标志。" % (
+                    v.get("desc") or "其它内容")
     if not ai:
         ai = ("收到你在「%s」的记录，这一站算完成。" % site["name"])
         if covered:
@@ -421,6 +439,8 @@ def judge(site, task, choice=None, text=None, image=None, cfg=None):
         else:
             ai += "如果愿意，可以再补一句现场看到的细节（年份、数字或展签上的话）。"
 
+    if vision_note:
+        ai = (ai + "　" + vision_note).strip()
     return {"ok": True, "score": 100, "feedback": ai,
             "guide": q.get("guide", ""), "covered": covered,
             "taskType": ttype, "hasPhoto": bool(image)}
