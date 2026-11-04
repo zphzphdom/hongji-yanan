@@ -810,19 +810,22 @@ def _fetch_page_images(page_url, timeout=5, limit=8):
     return out
 
 
-def _img_head_ok(url, timeout=4, min_bytes=25000):
-    """轻量校验：只发 HEAD，看类型与大小，不下载图片本体。"""
-    try:
-        req = urllib.request.Request(url, method="HEAD", headers={
-            "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            ctype = (r.headers.get("Content-Type") or "").lower()
-            size = int(r.headers.get("Content-Length") or 0)
-            if not ctype.startswith("image/"):
-                return False
-            return size == 0 or size >= min_bytes
-    except Exception:
-        return False
+def _img_head_ok(url, timeout=4, min_bytes=15000):
+    """轻量校验：先 HEAD；被拒则用 GET 读少量字节判断。"""
+    for method in ("HEAD", "GET"):
+        try:
+            req = urllib.request.Request(url, method=method, headers={
+                "User-Agent": "Mozilla/5.0", "Referer": "https://yanan.gov.cn/"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                ctype = (r.headers.get("Content-Type") or "").lower()
+                size = int(r.headers.get("Content-Length") or 0)
+                if method == "GET":
+                    r.read(2048)
+                if ctype.startswith("image/"):
+                    return size == 0 or size >= min_bytes
+        except Exception:
+            continue
+    return False
 
 
 def _img_https_ok(url, timeout=4):
@@ -903,8 +906,10 @@ def vision_check(url, context, cfg=None, timeout=25):
         return out
 
     prompt = (
-        "请判断这张图片是否与下面的内容相关。\n"
+        "请严格判断这张图片是否与下面的内容直接相关。\n"
         "内容：%s\n\n"
+        "判定标准（从严）：图片主体必须是内容里提到的具体地点、建筑、人物或事件；"
+        "只是同城、同类主题、或仅有文字牌不算相关；风景街景一律判 false。\n"
         "只输出一行 JSON，不要解释，格式："
         '{"desc": "用12字以内描述图片里实际是什么", "related": true 或 false, '
         '"why": "20字以内的判断理由"}'
@@ -958,6 +963,22 @@ def vision_check(url, context, cfg=None, timeout=25):
     return out
 
 
+def _desc_matches(desc, context, keys, min_hits=1):
+    """图片描述必须与问题/关键词有实际交集；泛描述直接拒绝。"""
+    if not desc:
+        return False
+    d = re.sub(r"\s+", "", desc).lower()
+    terms = [str(k) for k in (keys or []) if k and len(str(k)) >= 2]
+    terms += [t for t in extract_keywords(context or "") if t]
+    hits = sum(1 for t in set(terms) if t.lower() in d)
+    if hits >= min_hits:
+        return True
+    # 没有词面交集时，只拦明显泛化/无关的描述，其余交给视觉模型判定
+    generic = ("城市风光", "街景", "人群合影", "建筑群", "俯瞰全城", "站台", "列车",
+               "摊位", "美食", "卡通", "剪纸", "海报")
+    return not any(g in desc for g in generic)
+
+
 def _img_relevant(url, page_title, context, keys):
     """文本相关性：图片所在页面标题/关键词要与回答内容对得上。"""
     hay = (url or "") + " " + (page_title or "") + " " + " ".join(keys or [])
@@ -985,10 +1006,18 @@ def web_image(keywords, timeout=5, fresh=False):
     cfg = llm_config()
     found = []
     if cfg["key"] and cfg["search_on"]:
-        try:
-            results = ds_search(cfg, " ".join(keywords) + " 图片", timeout=timeout)
-        except Exception:
-            results = []
+        kw = " ".join(keywords)
+        results = []
+        for q in (kw + " 图片", kw + " 实景 新闻", kw + " 景区"):
+            try:
+                results += ds_search(cfg, q, timeout=timeout)
+            except Exception:
+                pass
+        # 排除素材/图库站，优先新闻与官网
+        STOCK = ("redocn", "huitu", "quanjing", "vcg", "cfp", "veer", "zcool",
+                 "699pic", "58pic", "tukuppt", "51miz", "pixabay", "shutterstock")
+        results = [w for w in results
+                   if not any(b in (w.get("url") or "").lower() for b in STOCK)]
 
         BADNAME = ("logo", "icon", "avatar", "qrcode", "share", "banner", "wechat",
                    "admin", "default", "placeholder", "empty")
@@ -1010,9 +1039,16 @@ def web_image(keywords, timeout=5, fresh=False):
         if len(found) < 4 and results:
             GOOD = ("gov.cn", "xinhuanet", "people.com.cn", "cnwest.com", "hsw.cn",
                     "gmw.cn", "cnr.cn", "yanews.cn", "cn")
-            ranked = sorted(results, key=lambda w: 0 if any(
+            # 只从「标题/链接里出现关键词」的页面取图，显著提升相关性
+            kw_lower = [k.lower() for k in keywords if k]
+            def _rel(w):
+                hay = ((w.get("title") or "") + " " + (w.get("url") or "")).lower()
+                return any(k in hay for k in kw_lower)
+            focused = [w for w in results if _rel(w)]
+            pool_src = focused if focused else results
+            ranked = sorted(pool_src, key=lambda w: 0 if any(
                 d in (w.get("url") or "") for d in GOOD) else 1)
-            pages = [w for w in ranked[:5] if (w.get("url") or "").startswith("http")]
+            pages = [w for w in ranked[:6] if (w.get("url") or "").startswith("http")]
 
             bag, lock = [], threading.Lock()
 
@@ -1030,11 +1066,20 @@ def web_image(keywords, timeout=5, fresh=False):
 
             seen = {f["url"] for f in found}
             checked = []
+            kw_l = [k.lower() for k in keywords if k]
             for u, w in bag:
                 if u in seen or len(found) >= 5:
                     continue
                 seen.add(u)
                 checked.append((u, w))
+            # 优先「文件名/路径含关键词」的图，这类图最可能真是该地点
+            def _named(item):
+                low = item[0].lower()
+                return 0 if any(k in low for k in kw_l) else 1
+            checked.sort(key=_named)
+            named = [c for c in checked if _named(c) == 0]
+            if named:
+                checked = named
             verdict = {}
 
             def check(u):
@@ -1740,22 +1785,14 @@ class Handler(SimpleHTTPRequestHandler):
             # 并行收集最多 6 张候选
             pre = []
             with cf.ThreadPoolExecutor(max_workers=4) as ex:
-                for r in ex.map(fetch_one, uniq[:8]):
+                for r in ex.map(fetch_one, uniq[:10]):
                     if r:
                         pre.append(r)
-                    if len(pre) >= 6:
+                    if len(pre) >= 8:
                         break
 
             if not pre:
                 return self._json({"ok": True, "url": "", "reason": "网上没有检索到可用图片"})
-
-            # 先看文字强匹配：命中 ≥2 个关键词直接用，不花识图时间
-            for it in pre:
-                hay = (it["pageTitle"] + " " + it["url"] + " " + " ".join(it["combo"])).lower()
-                hits = sum(1 for k in kws if k and k.lower() in hay)
-                if hits >= 2:
-                    return self._json({"ok": True, "url": it["url"],
-                                       "credit": it["credit"], "alt": it["alt"], "desc": ""})
 
             # 其余走视觉识别（并行）
             verdict = {}
@@ -1765,19 +1802,26 @@ class Handler(SimpleHTTPRequestHandler):
                 with lock2:
                     verdict[it["url"]] = v
 
-            ths = [threading.Thread(target=vis_one, args=(it,)) for it in pre[:4]]
+            ths = [threading.Thread(target=vis_one, args=(it,)) for it in pre[:6]]
             for th in ths:
                 th.start()
             for th in ths:
-                th.join(timeout=26)
+                th.join(timeout=30)
 
-            for it in pre[:4]:
+            for it in pre[:6]:
                 v = verdict.get(it["url"]) or {}
-                if v.get("ok") and v.get("related") is False:
+                if not v.get("ok"):
+                    # 识别失败：不展示（宁缺毋滥）
+                    continue
+                if v.get("related") is not True:
                     append_log({"event": "vision_reject", "url": it["url"][:200],
                                 "desc": v.get("desc"), "why": v.get("reason")})
                     continue
-                desc = v.get("desc") if v.get("ok") else ""
+                desc = v.get("desc") or ""
+                if not _desc_matches(desc, ctx, kws):
+                    append_log({"event": "vision_weak", "url": it["url"][:200],
+                                "desc": desc})
+                    continue
                 return self._json({"ok": True, "url": it["url"],
                                    "credit": it["credit"] + ("　识别：" + desc if desc else ""),
                                    "alt": desc or it["alt"], "desc": desc})
