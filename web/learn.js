@@ -95,6 +95,15 @@
       if (el) el.classList.toggle('hidden', k !== id);
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (id === 'stepPlan') {
+      if (state.route && state.route.length) {
+        if (rmap) kickMap(rmap);
+        else initRouteMap(state.route);
+      }
+    }
+    if (id === 'stepTask' && geoState.data && !smap) {
+      initSiteMap(geoState.data);
+    }
   }
 
 
@@ -501,8 +510,9 @@
       return;
     }
     if (smap) { smap.remove(); smap = null; }
-    whenVisible(box, function () { buildSiteMap(box, g); });
-    return;
+    var b0 = box.getBoundingClientRect();
+    if (b0.width < 20 || b0.height < 20) return;   // 切到该步骤时再建
+    buildSiteMap(box, g);
   }
 
   function buildSiteMap(box, g) {
@@ -548,6 +558,13 @@
 
   /* ---------------- 位置卡与导航 ---------------- */
   var geoState = { data: null, pos: null };
+  var rmap = null, rlayers = [], userMarker = null;
+
+  window.addEventListener('error', function (e) {
+    if (window.console && console.error) console.error('[hongji]', e.message);
+    var box = document.getElementById('mapTip');
+    if (box && /is not defined/.test(e.message || '')) box.textContent = '地图加载异常，请刷新';
+  });
 
   function haversineKm(a, b) {
     var R = 6371, toR = Math.PI / 180;
@@ -689,8 +706,14 @@
     }
     if (rmap) { rmap.remove(); rmap = null; }
     rlayers = [];
-    whenVisible(box, function () { buildRouteMap(route); });
-    return;
+    var r0 = box.getBoundingClientRect();
+    if (r0.width < 20 || r0.height < 20) {
+      // 容器还没显示：等 show('stepPlan') 时再建，避免 0 尺寸初始化
+      var tipw = $('#mapTip');
+      if (tipw) tipw.textContent = '进入线路页后显示地图';
+      return;
+    }
+    buildRouteMap(route);
   }
 
   function buildRouteMap(route) {
@@ -1211,8 +1234,60 @@
     }, function () {}, { timeout: 6000, maximumAge: 300000 });
   }
 
+
+  /* ---------------- 直达线路（?auto=1） ---------------- */
+  function autoPlan() {
+    var q = {};
+    try { new URLSearchParams(location.search).forEach(function (v, k) { q[k] = v; }); } catch (e) {}
+    state.identity = q.identity || 'student';
+    state.stage = q.stage || 'middle';
+    state.interest = q.interest || 'history';
+    state.days = Math.max(1, Math.min(7, parseInt(q.days || '1', 10) || 1));
+    state.note = q.note || '';
+    show('stepChat');
+    bubble('正在按你的选择生成线路…', 'ai');
+    api('/api/plan', {
+      identity: state.identity, stage: state.stage, interest: state.interest,
+      days: state.days, note: state.note
+    }).then(function (j) {
+      if (!j || !j.ok) { bubble('线路生成失败，请重试。', 'ai'); return; }
+      state.plan = j.plan || null;
+      state.route = j.route || [];
+      state.routeIdx = 0;
+      state.scope = (state.route || []).length ? state.scope : [];
+      if (j.scope && j.scope.length) state.scope = j.scope;
+      else state.scope = state.route.map(function (r) { return r.siteId; });
+      if (j.progress) renderProgress(j.progress);
+      renderPlan(j);
+      show('stepPlan');
+      setTimeout(function () {
+        if (window.RedMapTest) window.RedMapTest();
+      }, 1200);
+    }).catch(function (e) {
+      bubble('网络异常：' + (e && e.message ? e.message : '请重试'), 'ai');
+    });
+  }
+
+  // 供自动化检查：返回地图是否成功渲染
+  window.RedMapTest = function () {
+    var box = document.getElementById('routeMap');
+    var tiles = document.querySelectorAll('#routeMap .leaflet-tile').length;
+    var pins = document.querySelectorAll('#routeMap .mp-pin').length;
+    var labels = document.querySelectorAll('#routeMap .mp-label').length;
+    document.title = 'ROUTEMAP:' + (tiles > 0 && pins > 0 ? 'OK' : 'FAIL') +
+      ' tiles=' + tiles + ' pins=' + pins + ' labels=' + labels +
+      ' size=' + (box ? Math.round(box.getBoundingClientRect().width) + 'x' +
+                   Math.round(box.getBoundingClientRect().height) : '0x0');
+  };
+
   function bind() {
     primeGeo();
+    try {
+      if (new URLSearchParams(location.search).get('auto') === '1') {
+        autoPlan();
+        return;
+      }
+    } catch (e) {}
     bootRegions();
     startChat();
     api('/api/progress', { scope: state.scope }).then(function (j) {
