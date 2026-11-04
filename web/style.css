@@ -640,3 +640,36 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .mp-label{background:rgba(255,255,255,.92);border:none;box-shadow:0 2px 8px rgba(0,0,0,.15);
   font-size:11px;color:#3A2E29;padding:2px 7px;border-radius:6px}
 .mp-label::before{display:none}
+
+
+/* 地图高度兜底（防止容器高度为 0 导致空白） */
+.route-map{min-height:300px}
+.site-map{min-height:240px}
+#goMap{min-height:360px}
+.leaflet-container{min-height:inherit;background:#EAE0D5}
+@media (max-width:480px){
+  .route-map{min-height:260px}
+  .site-map{min-height:220px}
+  #goMap{min-height:300px}
+}
+/* 地图加载失败提示 */
+.map-fallback{display:flex;align-items:center;justify-content:center;height:100%;min-height:200px;
+  color:#8A7A6E;font-size:12.5px;text-align:center;padding:18px;line-height:1.8}
+
+
+/* 地区下拉 */
+.brand-clickable{cursor:pointer;position:relative}
+.brand-clickable::after{content:'▾';font-size:10px;margin-left:4px;opacity:.7}
+.region-menu{position:fixed;z-index:200;min-width:210px;background:#fff;border:1px solid var(--line);
+  border-radius:14px;box-shadow:0 12px 36px rgba(60,30,20,.22);padding:6px;
+  animation:riseIn .18s ease both}
+.rm-item{display:flex;justify-content:space-between;align-items:baseline;gap:10px;width:100%;
+  border:none;background:transparent;padding:10px 12px;border-radius:10px;cursor:pointer;
+  font-family:var(--sans);font-size:14px;color:#3A2E29;text-align:left}
+.rm-item:hover{background:#FBF6F0}
+.rm-item.on{background:var(--red);color:#fff}
+.rm-item.on .rm-meta{color:rgba(255,255,255,.8)}
+.rm-meta{font-size:10.5px;color:#A6978E}
+.console-entry{display:inline-block;margin-left:10px;font-size:11px;color:#A6978E;text-decoration:none;
+  border:1px solid var(--line);border-radius:10px;padding:2px 8px}
+.console-entry:hover{color:var(--red);border-color:var(--gold)}
