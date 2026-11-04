@@ -1424,7 +1424,53 @@ def visitor_of(req, body_user=None):
     return v[:40] if v else ""
 
 
+def _accepts_gzip(handler):
+    return "gzip" in (handler.headers.get("Accept-Encoding") or "").lower()
+
+
+def send_gzip(self, body, ctype, cache="no-cache"):
+    """文本资源压缩后发送；小文件不压缩。"""
+    import gzip as _gz
+    raw = body if isinstance(body, (bytes, bytearray)) else body.encode("utf-8")
+    self.send_response(200)
+    self.send_header("Content-Type", ctype)
+    self.send_header("Cache-Control", cache)
+    if len(raw) > 1024 and _accepts_gzip(self):
+        comp = _gz.compress(raw, 6)
+        if len(comp) < len(raw):
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Content-Length", str(len(comp)))
+            self.end_headers()
+            self.wfile.write(comp)
+            return
+    self.send_header("Content-Length", str(len(raw)))
+    self.end_headers()
+    self.wfile.write(raw)
+
+
 class Handler(SimpleHTTPRequestHandler):
+    def send_head(self):
+        # 仅对大文本文件走压缩；其余交给父类
+        path = self.translate_path(self.path)
+        if os.path.isfile(path) and path.lower().endswith((".js", ".css", ".html", ".json", ".svg")):
+            try:
+                with open(path, "rb") as f:
+                    body = f.read()
+                ctype = self.guess_type(path)
+                if ctype:
+                    ctype = ctype.split(";")[0]
+                else:
+                    ctype = "application/octet-stream"
+                if path.endswith(".css"):
+                    ctype = "text/css"
+                cache = "public, max-age=300"
+                send_gzip(self, body, ctype, cache)
+                return None
+            except Exception:
+                pass
+        return SimpleHTTPRequestHandler.send_head(self)
+
     server_version = "HongjiYanan/2.0"
 
     def __init__(self, *a, **kw):
