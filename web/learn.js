@@ -34,6 +34,36 @@
     nature: '自然风光与黄河', art: '文艺与新闻出版', family: '亲子与研学'
   };
 
+  // 山西版：问题与选项都换成山西的说法
+  var REGION_TALK = {
+    yanan: {
+      askIdentity: '你好，我是延小讲。先问一句：你是以什么身份来延安的？',
+      askStage: '在读哪个学段？我按学段给你配任务。',
+      askInterest: '这趟最想带走什么？',
+      askDays: '打算在延安待几天？（1—7 天，直接填数字）',
+      askNote: '还有什么想说的？（可以直接跳过，我这就排线路）',
+      interests: {
+        history: '革命旧址与事件', spirit: '延安精神与作风',
+        nature: '自然风光与黄河', art: '文艺与新闻出版', family: '亲子与研学'
+      }
+    },
+    shanxi: {
+      askIdentity: '你好，我是晋小讲。先问一句：你是以什么身份来山西的？',
+      askStage: '在读哪个学段？我按学段给你配任务。',
+      askInterest: '这趟最想看哪一类？',
+      askDays: '打算在山西待几天？（1—7 天，直接填数字）',
+      askNote: '还有什么想说的？（比如想重点看平型关或太行纪念馆）',
+      interests: {
+        history: '八路军抗战旧址', spirit: '太行精神与作风',
+        nature: '太行山水与关隘', art: '抗战文艺与报刊', family: '亲子与研学'
+      }
+    }
+  };
+
+  function talk() {
+    return REGION_TALK[REGION] || REGION_TALK.yanan;
+  }
+
   function api(path, body) {
     var payload = body || {};
     payload.visitor = VISITOR;
@@ -149,12 +179,12 @@
   function startChat() {
     $('#chatLog').innerHTML = '';
     $('#chatInputBox').classList.add('hidden');
-    bubble('你好，我是延小讲。先问一句：你是以什么身份来延安的？', 'ai');
+    bubble(talk().askIdentity, 'ai');
     optButtons(IDENTS, function (k, label) {
       state.identity = k;
       bubble(label, 'me');
       if (k === 'student') {
-        bubble('在读哪个学段？我按学段给你配任务。', 'ai');
+        bubble(talk().askStage, 'ai');
         optButtons(STAGES, function (sk, sl) {
           state.stage = sk;
           bubble(sl, 'me');
@@ -167,8 +197,8 @@
   }
 
   function askInterest() {
-    bubble('这趟最想带走什么？', 'ai');
-    optButtons(INTERESTS, function (k, label) {
+    bubble(talk().askInterest, 'ai');
+    optButtons(talk().interests, function (k, label) {
       state.interest = k;
       bubble(label, 'me');
       askDays();
@@ -184,7 +214,7 @@
   }
 
   function askDays() {
-    bubble('打算玩几天？（1—7 天，直接填数字）', 'ai');
+    bubble(talk().askDays, 'ai');
     var box = $('#chatOpts');
     box.innerHTML = '';
     $('#chatInputBox').classList.remove('hidden');
@@ -213,7 +243,7 @@
   }
 
   function askNote() {
-    bubble('还有什么想说的？（可以直接跳过，我这就排线路）', 'ai');
+    bubble(talk().askNote, 'ai');
     $('#chatOpts').innerHTML = '';
     clearInput();
     $('#chatInputBox').classList.remove('hidden');
@@ -417,6 +447,70 @@
   function zoomEsc(e) { if (e.key === 'Escape') zoomClose(); }
 
 
+
+  /* ---------------- 点位真实地图 ---------------- */
+  var smap = null, smarkers = [];
+
+  function initSiteMap(g) {
+    var box = $('#siteMap');
+    if (!box) return;
+    var tip = $('#siteMapTip');
+    if (typeof L === 'undefined') {
+      box.innerHTML = '<div class="map-fallback">地图组件未加载，可点下方按钮用高德查看。</div>';
+      return;
+    }
+    if (smap) { smap.remove(); smap = null; }
+    smap = L.map(box, { zoomControl: true, attributionControl: false }).setView([g.lat, g.lng], 14);
+    var amap = L.tileLayer(
+      'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+      { subdomains: '1234', maxZoom: 18 });
+    var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+    var swapped = false;
+    amap.on('tileerror', function () {
+      if (swapped) return;
+      swapped = true;
+      smap.removeLayer(amap); osm.addTo(smap);
+      if (tip) tip.textContent = '已切换备用瓦片';
+    });
+    amap.addTo(smap);
+
+    var html = '<div class="mp"><div class="mp-t">' + (g.name || '') + '</div>' +
+      (g.addr ? '<div class="mp-a">' + g.addr + '</div>' : '') +
+      '<div class="mp-acts">' +
+      '<a class="mp-btn primary" target="_blank" rel="noopener" href="' + (g.amap.navFrom || g.amap.nav) + '">开始导航</a>' +
+      '<a class="mp-btn" target="_blank" rel="noopener" href="' + (g.amap.search || g.amap.marker) + '">按名称搜</a>' +
+      '</div></div>';
+    L.marker([g.lat, g.lng], {
+      icon: L.divIcon({ className: 'mp-pin', html: '<span>1</span>', iconSize: [28, 28], iconAnchor: [14, 14] })
+    }).addTo(smap).bindPopup(html, { maxWidth: 250 }).openPopup();
+    smarkers = [];
+
+    // 定位
+    if (geoState.pos) {
+      addMe(g);
+    } else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        geoState.pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+        addMe(g);
+      }, function () {
+        if (tip) tip.textContent = '未授权定位 · 可点「开始导航」由高德定位';
+      }, { timeout: 6000, maximumAge: 300000 });
+    }
+    setTimeout(function () { if (smap) smap.invalidateSize(); }, 200);
+  }
+
+  function addMe(g) {
+    if (!smap || !geoState.pos) return;
+    var me = [geoState.pos.lat, geoState.pos.lng];
+    L.marker(me, { icon: L.divIcon({ className: 'mp-me', html: '<span>我</span>',
+                                     iconSize: [26, 26], iconAnchor: [13, 13] }) })
+      .addTo(smap).bindPopup('我的位置');
+    var km = haversineKm(geoState.pos, { lat: g.lat, lng: g.lng });
+    smap.fitBounds(L.latLngBounds([[g.lat, g.lng], me]).pad(0.3));
+    var tip = $('#siteMapTip');
+    if (tip) tip.textContent = '距你约 ' + km.toFixed(1) + ' 公里 · 点标点可导航';
+  }
+
   /* ---------------- 位置卡与导航 ---------------- */
   var geoState = { data: null, pos: null };
 
@@ -445,7 +539,7 @@
         }
         geoState.data = g;
         card.classList.remove('hidden');
-        drawGeoMap(g);
+        initSiteMap(g);
         var bits = [];
         bits.push('<b>' + g.name + '</b>');
         var place = [g.city, g.county].filter(Boolean).join(' · ');
@@ -490,66 +584,6 @@
       paint(null);
     }
   }
-
-  function drawGeoMap(g) {
-    var cv = $('#geoCanvas');
-    if (!cv) return;
-    var ctx = cv.getContext('2d');
-    var W = cv.width, H = cv.height;
-    ctx.clearRect(0, 0, W, H);
-
-    // 底：暖色网格，示意"地图"
-    ctx.fillStyle = '#FBF6F0'; ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = '#EFE2D6'; ctx.lineWidth = 1;
-    for (var x = 0; x < W; x += 40) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-    }
-    for (var y = 0; y < H; y += 40) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    }
-
-    var cx = W / 2, cy = H / 2 + 10;
-
-    // 若有当前位置，画一条虚线连接
-    if (g.from) {
-      var d = Math.max(40, Math.min(230, (g.distanceKm || 1) * 3));
-      var ux = (g.lng - g.from.lng), uy = -(g.lat - g.from.lat);
-      var len = Math.max(0.0001, Math.sqrt(ux * ux + uy * uy));
-      var px = cx - ux / len * d, py = cy - uy / len * d;
-      ctx.setLineDash([6, 6]);
-      ctx.strokeStyle = '#C08552'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(cx, cy); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#8C6A4A';
-      ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.font = '400 12px "PingFang SC",sans-serif';
-      ctx.fillText('当前位置', px + 10, py + 4);
-    }
-
-    // 目的地：脉冲圈 + 标记
-    var t = Date.now() / 600;
-    var r = 16 + 6 * Math.sin(t);
-    ctx.beginPath(); ctx.arc(cx, cy, r + 8, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(140,31,40,.12)'; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2);
-    ctx.fillStyle = '#8C1F28'; ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
-
-    ctx.fillStyle = '#211A17';
-    ctx.font = '600 15px "PingFang SC",sans-serif';
-    ctx.textAlign = 'center';
-    var label = g.name.length > 14 ? g.name.slice(0, 13) + '…' : g.name;
-    ctx.fillText(label, cx, cy + 34);
-    ctx.textAlign = 'left';
-
-    ctx.fillStyle = '#A6978E';
-    ctx.font = '400 11px "PingFang SC",sans-serif';
-    ctx.fillText('示意图（非实际路网）', 12, H - 12);
-  }
-
-
-  /* ---------------- 线路地图（真实瓦片） ---------------- */
-  var rmap = null, rlayers = [], userMarker = null;
 
   function mapTile(url, opts) { return L.tileLayer(url, opts); }
 
@@ -912,8 +946,9 @@
       if (done) {
         state.justCompleted = true;
         state.afterFinish = function () {
-          if (j.progress.allDone || last) showFinish(j.progress);
-          else openSite(state.route[state.routeIdx + 1].siteId, state.routeIdx + 1);
+          if (j.progress.allDone) { showFinish(j.progress); return; }
+          if (last) { showRouteEnd(j.progress); return; }
+          openSite(state.route[state.routeIdx + 1].siteId, state.routeIdx + 1);
         };
       }
     }).catch(function () {
@@ -922,7 +957,25 @@
     });
   }
 
+  function showRouteEnd(p) {
+    var left = (p.total || 0) - (p.done || 0);
+    $('#finishTitle').textContent = '线路走完，还有 ' + left + ' 个点位没做';
+    $('#finishSub').textContent = '已完成 ' + (p.done || 0) + '/' + (p.total || 0) +
+      ' 个点位。可以回线路继续补做，或先生成当前进度的纪念卡。';
+    var stats = $('#finishStats');
+    stats.innerHTML = '';
+    (p.sites || []).forEach(function (s) {
+      var d = document.createElement('div');
+      d.className = 'stat' + (s.done ? '' : ' stat-todo');
+      d.innerHTML = '<div class="stat-v">' + (s.done ? (s.score || 0) : '未完成') +
+        '</div><div class="stat-l">' + (s.name || '') + '</div>';
+      stats.appendChild(d);
+    });
+    show('stepFinish');
+  }
+
   function showFinish(p) {
+    $('#finishTitle').textContent = '线路全部完成';
     var done = (p.sites || []).filter(function (s) { return s.done; });
     var avg = done.reduce(function (a, s) { return a + (s.score || 0); }, 0) / Math.max(1, done.length);
     $('#finishSub').textContent = '已完成 ' + (p.done || done.length) + '/' + (p.total || 6) +
@@ -1051,7 +1104,16 @@
   }
 
   /* ---------------- 绑定 ---------------- */
+  function primeGeo() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(function (p) {
+      geoState.pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+      if (smap && geoState.data) addMe(geoState.data);
+    }, function () {}, { timeout: 6000, maximumAge: 300000 });
+  }
+
   function bind() {
+    primeGeo();
     bootRegions();
     startChat();
     api('/api/progress', { scope: state.scope }).then(function (j) {
