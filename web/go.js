@@ -46,6 +46,16 @@
     } else next();
   }
 
+  function whenVisible(el, cb, tries) {
+    tries = tries == null ? 40 : tries;
+    (function check() {
+      var r = el.getBoundingClientRect();
+      if (r.width > 20 && r.height > 20) { cb(); return; }
+      if (tries-- <= 0) { cb(); return; }
+      setTimeout(check, 150);
+    })();
+  }
+
   function draw() {
     if (typeof L === 'undefined') {
       document.getElementById('goMap').innerHTML = '<div class="map-fallback">地图组件未加载</div>';
@@ -53,6 +63,11 @@
     }
     var pts = items.filter(function (x) { return x.geo; });
     if (!pts.length) return;
+    var host = document.getElementById('goMap');
+    if (host) whenVisible(host, function () { buildGoMap(pts); });
+  }
+
+  function buildGoMap(pts) {
     map = L.map('goMap', { zoomControl: true, attributionControl: false });
     var std = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
       { subdomains: '1234', maxZoom: 18 });
@@ -80,7 +95,9 @@
     var all = pts.map(function (x) { return [x.geo.lat, x.geo.lng]; });
     if (pos) all.push([pos.lat, pos.lng]);
     map.fitBounds(all, { padding: [30, 30] });
-    setTimeout(function () { map.invalidateSize(); }, 200);
+    [60, 200, 500, 900].forEach(function (ms) {
+      setTimeout(function () { try { map.invalidateSize(); } catch (e) {} }, ms);
+    });
   }
 
   function focus(g) {
