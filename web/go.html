@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C1F28">
+<title>红迹 · 导航</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="subnav" id="subnav">
+  <a class="subnav-brand" href="index.html">红迹</a>
+  <a href="qa.html">问答</a>
+  <a href="plan.html">线路</a>
+  <a href="sites.html">点位</a>
+  <a href="go.html">导航</a>
+</nav>
+<div class="subwrap">
+  <h1 class="subh1">点位导航</h1>
+  <p class="subp">选择点位，查看真实地图位置与距离；点「开始导航」跳高德。</p>
+  <div id="goMap" class="route-map"></div>
+  <div id="goList" class="sitelist"></div>
+</div>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="region.js"></script>
+<script src="go.js"></script>
+
+</body>
+</html>
