@@ -314,9 +314,6 @@ def load_index(region=DEFAULT_REGION):
         return ({"entries": [], "idf": {}, "avg": 1.0, "tags": [], "tagmap": {},
                  "intents": [], "intentmap": {}, "places": [], "title_df": {}},
                 {"entries": [], "version": "web-only", "sources": 0})
-    mtime = os.path.getmtime(path) if os.path.exists(path) else 0
-    if _CACHE["mtime"] == mtime and _CACHE["idx"]:
-        return _CACHE["idx"], _CACHE["kb"]
     kb = read_json(path, {"entries": []}) or {"entries": []}
     n = max(1, len(kb["entries"]))
     df = {}
@@ -341,7 +338,6 @@ def load_index(region=DEFAULT_REGION):
         "tags": sorted(tagmap, key=len, reverse=True),
         "intents": sorted(intentmap, key=len, reverse=True),
     }
-    _CACHE.update({"kb": kb, "mtime": mtime, "idx": idx})
     REGION_CACHE[key] = {"mtime": mtime, "idx": idx, "kb": kb}
     return idx, kb
 
