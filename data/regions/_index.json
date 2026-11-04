@@ -37,12 +37,12 @@
    "name": "山西",
    "subtitle": "太行山 · 晋绥 · 抗战前沿",
    "accent": "#7A3E1D",
-   "count": 99,
-   "chars": 7983,
-   "sources": 3,
+   "count": 1450,
+   "chars": 107012,
+   "sources": 4,
    "kinds": {
-    "fact": 33,
-    "variant": 66
+    "fact": 43,
+    "variant": 1407
    },
    "aiName": "晋小讲",
    "brand": "红迹·山西",
@@ -60,7 +60,8 @@
    "promptArea": "山西太行抗战文旅",
    "promptHint": "只要内容与八路军抗战、太行或晋绥根据地相关，就用一句话与「太行精神」（不怕牺牲、不畏艰险、百折不挠、艰苦奋斗、无私奉献）自然联系起来",
    "cardHead": "红迹·山西 · 抗战点位学习",
-   "taskLabel": "研学"
+   "taskLabel": "研学",
+   "facts": 43
   }
  ]
 }
