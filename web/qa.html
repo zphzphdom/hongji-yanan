@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C1F28">
+<title>红迹 · 史实问答</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="subnav" id="subnav">
+  <a class="subnav-brand" href="index.html">红迹</a>
+  <a href="qa.html">问答</a>
+  <a href="plan.html">线路</a>
+  <a href="sites.html">点位</a>
+  <a href="go.html">导航</a>
+</nav>
+<div class="subwrap">
+  <h1 class="subh1">史实问答</h1>
+  <p class="subp">联网检索 + 模型整合，每条都标来源、配相关图，查不到就说不知道。</p>
+  <section class="qapanel" id="qaPanel">
+    <div class="qainput">
+      <input id="qaInput" type="text" placeholder="问点什么，比如：宝塔山有多高？" maxlength="120">
+      <button id="qaSend" class="btn-primary">提问</button>
+    </div>
+    <div class="modes" id="qaModes">
+      <button class="mode on" data-mode="fact">史实</button>
+      <button class="mode" data-mode="research">讲解词</button>
+      <button class="mode" data-mode="moment">朋友圈</button>
+    </div>
+    <div id="qaAnswer" class="qaanswer"></div>
+  </section>
+</div>
+<script src="region.js"></script>
+<script src="qa.js"></script>
+
+</body>
+</html>
