@@ -461,18 +461,7 @@
     }
     if (smap) { smap.remove(); smap = null; }
     smap = L.map(box, { zoomControl: true, attributionControl: false }).setView([g.lat, g.lng], 14);
-    var amap = L.tileLayer(
-      'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
-      { subdomains: '1234', maxZoom: 18 });
-    var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
-    var swapped = false;
-    amap.on('tileerror', function () {
-      if (swapped) return;
-      swapped = true;
-      smap.removeLayer(amap); osm.addTo(smap);
-      if (tip) tip.textContent = '已切换备用瓦片';
-    });
-    amap.addTo(smap);
+    makeLayers().addTo(smap, tip);
 
     var html = '<div class="mp"><div class="mp-t">' + (g.name || '') + '</div>' +
       (g.addr ? '<div class="mp-a">' + g.addr + '</div>' : '') +
@@ -587,6 +576,42 @@
 
   function mapTile(url, opts) { return L.tileLayer(url, opts); }
 
+  /* ---------------- 地图图层：高德标准 / 高德卫星 / OSM ---------------- */
+  function makeLayers() {
+    var std = L.tileLayer(
+      'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+      { subdomains: '1234', maxZoom: 18, attribution: '高德地图' });
+    var sat = L.tileLayer(
+      'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+      { subdomains: '1234', maxZoom: 18, attribution: '高德卫星' });
+    var satLabel = L.tileLayer(
+      'https://webst0{s}.is.autonavi.com/appmaptile?style=8&ltype=11&x={x}&y={y}&z={z}',
+      { subdomains: '1234', maxZoom: 18 });
+    var satGroup = L.layerGroup([sat, satLabel]);
+    var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 19, attribution: 'OpenStreetMap' });
+    return {
+      standard: std,
+      satellite: satGroup,
+      osm: osm,
+      addTo: function (map, tipEl) {
+        var cur = std.addTo(map);
+        var swapped = false;
+        std.on('tileerror', function () {
+          if (swapped) return;
+          swapped = true;
+          map.removeLayer(cur);
+          cur = osm;
+          osm.addTo(map);
+          if (tipEl) tipEl.textContent = '已切换备用瓦片';
+        });
+        L.control.layers({ '标准': std, '卫星': satGroup, 'OSM': osm }, null,
+          { position: 'topright', collapsed: true }).addTo(map);
+        return { current: function () { return cur; } };
+      }
+    };
+  }
+
   function initRouteMap(route) {
     var box = $('#routeMap');
     if (!box) return;
@@ -600,20 +625,8 @@
     rlayers = [];
     rmap = L.map(box, { zoomControl: true, attributionControl: false }).setView([36.6, 109.5], 7);
 
-    // 高德瓦片（GCJ-02，无需 Key），失败退回 OSM
-    var amap = mapTile(
-      'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
-      { subdomains: '1234', maxZoom: 18, detectRetina: false });
-    var osm = mapTile('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
-    var switched = false;
-    amap.on('tileerror', function () {
-      if (switched) return;
-      switched = true;
-      rmap.removeLayer(amap);
-      osm.addTo(rmap);
-      var t = $('#mapTip'); if (t) t.textContent = '已切换备用瓦片';
-    });
-    amap.addTo(rmap);
+    // 高德标准 / 卫星 / OSM 三选一，可切换
+    makeLayers().addTo(rmap, $('#mapTip'));
 
     var pts = [];
     (route || []).forEach(function (r, i) {
@@ -633,7 +646,10 @@
       var m = L.marker(latlng, {
         icon: L.divIcon({ className: 'mp-pin', html: '<span>' + (i + 1) + '</span>',
                           iconSize: [28, 28], iconAnchor: [14, 14] })
-      }).addTo(rmap).bindPopup(html, { maxWidth: 260 });
+      }).addTo(rmap).bindPopup(html, { maxWidth: 260 })
+        .bindTooltip((i + 1) + '. ' + (r.name || ''), {
+          permanent: true, direction: 'top', offset: [0, -14], className: 'mp-label'
+        });
       rlayers.push(m);
     });
 
@@ -946,9 +962,19 @@
       if (done) {
         state.justCompleted = true;
         state.afterFinish = function () {
-          if (j.progress.allDone) { showFinish(j.progress); return; }
+          // 以服务端为准：线路内每个点位都完成后才进完成页
+          var everyDone = (j.progress.total > 0) && (j.progress.done >= j.progress.total);
+          if (everyDone) { showFinish(j.progress); return; }
           if (last) { showRouteEnd(j.progress); return; }
-          openSite(state.route[state.routeIdx + 1].siteId, state.routeIdx + 1);
+          // 找到下一个还没做的点位
+          var next = state.route[state.routeIdx + 1];
+          for (var i = state.routeIdx + 1; i < state.route.length; i++) {
+            var sid = state.route[i].siteId;
+            var hit = (j.progress.sites || []).filter(function (x) { return x.id === sid; })[0];
+            if (!hit || !hit.done) { next = state.route[i]; state.routeIdx = i; break; }
+          }
+          if (next) openSite(next.siteId, state.routeIdx);
+          else showRouteEnd(j.progress);
         };
       }
     }).catch(function () {
