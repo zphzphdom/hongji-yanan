@@ -114,6 +114,41 @@
   }
 
   /* ---------------- 地区切换 ---------------- */
+  function openRegionMenu(anchor) {
+    var old = document.getElementById('regionMenu');
+    if (old) { old.remove(); return; }
+    if (!REGIONS.length) return;
+    var box = document.createElement('div');
+    box.id = 'regionMenu';
+    box.className = 'region-menu';
+    box.innerHTML = REGIONS.map(function (r) {
+      return '<button class="rm-item' + (r.id === REGION ? ' on' : '') + '" data-rid="' + r.id + '">' +
+        '<span class="rm-name">' + r.name + '</span>' +
+        '<span class="rm-meta">' + (r.count || 0) + ' 条 · ' +
+        Math.round((r.chars || 0) / 1000) + 'k 字</span></button>';
+    }).join('');
+    var rect = anchor.getBoundingClientRect();
+    box.style.top = (rect.bottom + 8) + 'px';
+    box.style.left = Math.max(12, rect.left) + 'px';
+    document.body.appendChild(box);
+    [].forEach.call(box.children, function (b) {
+      b.onclick = function () {
+        if (b.dataset.rid === REGION) { box.remove(); return; }
+        box.remove();
+        REGION = b.dataset.rid;
+        try { localStorage.setItem('hy_region', REGION); } catch (e) {}
+        location.search = '?r=' + encodeURIComponent(REGION);
+      };
+    });
+    setTimeout(function () {
+      document.addEventListener('click', function h2() {
+        var m = document.getElementById('regionMenu');
+        if (m) m.remove();
+        document.removeEventListener('click', h2);
+      }, { once: true });
+    }, 0);
+  }
+
   function renderRegionBar() {
     var bar = $('#regionBar');
     if (!bar || !REGIONS.length) return;
@@ -150,6 +185,12 @@
         }
         applyLearnRegion(REGIONS.filter(function (x) { return x.id === REGION; })[0]);
         renderRegionBar();
+        var bn = document.querySelector('.brand-name');
+        if (bn) {
+          bn.classList.add('brand-clickable');
+          bn.title = '切换地区';
+          bn.onclick = function (e) { e.stopPropagation(); openRegionMenu(bn); };
+        }
       }).catch(function () {});
   }
 
@@ -460,6 +501,11 @@
       return;
     }
     if (smap) { smap.remove(); smap = null; }
+    whenVisible(box, function () { buildSiteMap(box, g); });
+    return;
+  }
+
+  function buildSiteMap(box, g) {
     smap = L.map(box, { zoomControl: true, attributionControl: false }).setView([g.lat, g.lng], 14);
     makeLayers().addTo(smap, tip);
 
@@ -485,7 +531,7 @@
         if (tip) tip.textContent = '未授权定位 · 可点「开始导航」由高德定位';
       }, { timeout: 6000, maximumAge: 300000 });
     }
-    setTimeout(function () { if (smap) smap.invalidateSize(); }, 200);
+    kickMap(smap);
   }
 
   function addMe(g) {
@@ -577,6 +623,26 @@
   function mapTile(url, opts) { return L.tileLayer(url, opts); }
 
   /* ---------------- 地图图层：高德标准 / 高德卫星 / OSM ---------------- */
+
+  /* ---------------- 可见后初始化（避免容器 0 尺寸导致地图空白） ---------------- */
+  function whenVisible(el, cb, tries) {
+    tries = tries == null ? 40 : tries;
+    function check() {
+      var r = el.getBoundingClientRect();
+      if (r.width > 20 && r.height > 20 && !el.classList.contains('hidden')) { cb(); return; }
+      if (tries <= 0) { cb(); return; }
+      setTimeout(function () { whenVisible(el, cb, tries - 1); }, 150);
+    }
+    check();
+  }
+
+  function kickMap(m) {
+    if (!m) return;
+    [60, 200, 500, 900].forEach(function (t) {
+      setTimeout(function () { try { m.invalidateSize(); } catch (e) {} }, t);
+    });
+  }
+
   function makeLayers() {
     var std = L.tileLayer(
       'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
@@ -623,6 +689,13 @@
     }
     if (rmap) { rmap.remove(); rmap = null; }
     rlayers = [];
+    whenVisible(box, function () { buildRouteMap(route); });
+    return;
+  }
+
+  function buildRouteMap(route) {
+    var box = $('#routeMap');
+    if (!box) return;
     rmap = L.map(box, { zoomControl: true, attributionControl: false }).setView([36.6, 109.5], 7);
 
     // 高德标准 / 卫星 / OSM 三选一，可切换
@@ -683,7 +756,7 @@
       if (t2) t2.textContent = '设备不支持定位';
     }
 
-    setTimeout(function () { if (rmap) rmap.invalidateSize(); }, 200);
+    kickMap(rmap);
   }
 
   // 给线路补上坐标与相邻距离
