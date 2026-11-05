@@ -399,16 +399,15 @@ def ds_search(cfg, query, timeout=8):
     """DeepSeek 联网检索（实时）。失败返回空，不阻塞主链路。"""
     if not cfg["key"] or not cfg["search_on"]:
         return []
-    body = json.dumps({"query": query, "max_results": 6}).encode("utf-8")
-    req = urllib.request.Request(cfg["search"], data=body, headers={
-        "Authorization": "Bearer " + cfg["key"], "Content-Type": "application/json"}, method="POST")
+    payload = {"query": query, "max_results": 4}
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        data = _pooled_request(cfg["search"], payload=payload,
+                               headers={"Authorization": "Bearer " + cfg["key"]},
+                               timeout=timeout)
     except Exception:
         return []
     out = []
-    for it in (data.get("results") or [])[:6]:
+    for it in (data.get("results") or [])[:4]:
         title = (it.get("title") or "").strip()
         content = (it.get("snippet") or it.get("content") or it.get("summary") or "").strip()
         if not content:
@@ -489,13 +488,11 @@ def ds_chat(cfg, query, mode, web_hits, timeout=20, budget=1200, strict=True, re
         "max_tokens": budget,
         "stream": False,
     }
-    req = urllib.request.Request(cfg["chat"], data=json.dumps(payload).encode("utf-8"),
-                                 headers={"Content-Type": "application/json",
-                                          "Authorization": "Bearer " + cfg["key"]}, method="POST")
     t0 = time.time()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        data = _pooled_request(cfg["chat"], payload=payload,
+                               headers={"Authorization": "Bearer " + cfg["key"]},
+                               timeout=timeout)
     except Exception as e:
         return None, type(e).__name__ + ":" + str(e)[:80]
     out = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
@@ -1192,7 +1189,105 @@ def card_copy(question, answer, mode, image_key, region=DEFAULT_REGION):
 # ---------------------------------------------------------------- 回答编排
 
 
-def answer(query, mode, trace=False, region=DEFAULT_REGION):
+
+# ---------------- HTTPS 连接复用（省 TLS 握手） ----------------
+import http.client as _hc
+import ssl as _ssl
+
+_POOL = {}
+_POOL_LOCK = threading.Lock()
+_SSL_CTX = _ssl.create_default_context()
+
+
+def _pooled_request(url, payload=None, headers=None, method=None, timeout=25):
+    """对同一主机复用 keep-alive 连接；失败自动重连一次。"""
+    u = urllib.parse.urlparse(url)
+    host = u.hostname
+    key = (host, u.port or 443)
+    path = url.split(host, 1)[1]
+    if not path.startswith("/"):
+        path = "/" + path
+    body = json.dumps(payload).encode() if payload is not None else None
+    hdrs = dict(headers or {})
+    if body is not None:
+        hdrs.setdefault("Content-Type", "application/json")
+    last = None
+    for attempt in (0, 1):
+        conn = None
+        try:
+            with _POOL_LOCK:
+                conn = _POOL.get(key)
+            if conn is None:
+                conn = _hc.HTTPSConnection(host, key[1], timeout=timeout, context=_SSL_CTX)
+                with _POOL_LOCK:
+                    _POOL[key] = conn
+            conn.request(method or ("POST" if body is not None else "GET"), path,
+                         body=body, headers=hdrs)
+            resp = conn.getresponse()
+            raw = resp.read()
+            if resp.status != 200:
+                raise IOError("http %s" % resp.status)
+            with _POOL_LOCK:
+                _POOL[key] = conn
+            return json.loads(raw or b"{}")
+        except Exception as e:
+            last = e
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+            with _POOL_LOCK:
+                _POOL.pop(key, None)
+    raise last
+
+
+_ANSWER_CACHE = {}
+_ANSWER_TTL = 600
+
+
+def _answer_key(question, mode, region):
+    return hashlib.sha1(("%s|%s|%s" % ((question or "").strip().lower(), mode, region))
+                        .encode()).hexdigest()[:20]
+
+
+def _answer_cache_get(key):
+    it = _ANSWER_CACHE.get(key)
+    if not it:
+        return None
+    if time.time() - it["t"] > _ANSWER_TTL:
+        _ANSWER_CACHE.pop(key, None)
+        return None
+    return it["v"]
+
+
+def _answer_cache_put(key, value):
+    if len(_ANSWER_CACHE) > 400:
+        for k in list(_ANSWER_CACHE)[:150]:
+            _ANSWER_CACHE.pop(k, None)
+    _ANSWER_CACHE[key] = {"t": time.time(), "v": value}
+
+
+def answer(query, mode="fact", trace=False, region=DEFAULT_REGION):
+    """带缓存的问答入口：相同问题直接复用，显著降低重复提问的等待。"""
+    key = _answer_key(query, mode, region)
+    hit = _answer_cache_get(key)
+    if hit is not None:
+        out = dict(hit)
+        out["cached"] = True
+        if isinstance(trace, dict):
+            trace["cached"] = True
+        return out
+    out = _answer_impl(query, mode, trace=trace, region=region)
+    try:
+        if isinstance(out, dict) and out.get("ok"):
+            _answer_cache_put(key, out)
+    except Exception:
+        pass
+    return out
+
+
+def _answer_impl(query, mode, trace=False, region=DEFAULT_REGION):
     """联网实时生成 → 知识库核查真伪 → 附来源与唯一配图。"""
     t0 = time.time()
     cfg = llm_config()
@@ -1673,7 +1768,13 @@ class Handler(SimpleHTTPRequestHandler):
             days = max(1, min(7, days))
             note = str(body.get("note") or "")[:120]
             rid = str(body.get("region") or DEFAULT_REGION)
-            route = plan.plan_route(identity, stage, interest, days, note, region=rid)
+            origin = None
+            try:
+                if body.get("lat") not in (None, "") and body.get("lng") not in (None, ""):
+                    origin = {"lat": float(body["lat"]), "lng": float(body["lng"])}
+            except Exception:
+                origin = None
+            route = plan.plan_route(identity, stage, interest, days, note, region=rid, origin=origin)
             head = plan.greet(identity, stage, interest, days, note, route, llm_config(),
                               region=rid)
             scope = [r["siteId"] for r in route]
