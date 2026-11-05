@@ -49,7 +49,11 @@
 
   function drawMap(g) {
     if (typeof L === 'undefined') {
-      $('#smap').innerHTML = '<div class="map-fallback">地图组件未加载</div>';
+      if (window.MiniMap) {
+        window.MiniMap($('#smap'), [{ lat: g.lat, lng: g.lng, name: g.name, addr: g.addr,
+          nav: (g.amap || {}).navFrom || (g.amap || {}).nav, search: (g.amap || {}).search }],
+          { height: 300 });
+      }
       return;
     }
     map = L.map('smap', { zoomControl: true, attributionControl: false })
