@@ -67,6 +67,7 @@
   function api(path, body) {
     var payload = body || {};
     payload.visitor = VISITOR;
+    if (!payload.region) payload.region = REGION;   // 所有请求默认带上当前地区
     return fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Visitor': VISITOR },
@@ -506,7 +507,11 @@
     if (!box) return;
     var tip = $('#siteMapTip');
     if (typeof L === 'undefined') {
-      box.innerHTML = '<div class="map-fallback">地图组件未加载，可点下方按钮用高德查看。</div>';
+      if (window.MiniMap) {
+        window.MiniMap(box, [{ lat: g.lat, lng: g.lng, name: g.name, addr: g.addr,
+          desc: '', nav: (g.amap || {}).navFrom || (g.amap || {}).nav,
+          search: (g.amap || {}).search }], { height: 260 });
+      }
       return;
     }
     if (smap) { smap.remove(); smap = null; }
@@ -660,6 +665,51 @@
     });
   }
 
+
+  /* ---------------- 地图方案：瓦片优先，失败切自带矢量图 ---------------- */
+  var mapMode = 'auto';   // auto | tile | mini
+
+  function routeMiniPoints(route) {
+    return (route || []).map(function (r) {
+      var g = r.geo || {};
+      return {
+        lat: g.lat, lng: g.lng, name: r.name, desc: r.why,
+        addr: g.addr || '', legKm: r.legKm,
+        nav: (g.amap || {}).navFrom || (g.amap || {}).nav,
+        search: (g.amap || {}).search || (g.amap || {}).marker
+      };
+    });
+  }
+
+  function renderMiniRoute(route) {
+    var box = $('#routeMap');
+    if (!box || !window.MiniMap) return;
+    if (rmap) { try { rmap.remove(); } catch (e) {} rmap = null; }
+    box.classList.remove('leaflet-container');
+    window.MiniMap(box, routeMiniPoints(route), { height: 340 });
+    var tip = $('#mapTip');
+    if (tip) tip.textContent = '自带矢量图（离线可用）';
+    addMapSwitch(route, 'mini');
+  }
+
+  function addMapSwitch(route, current) {
+    var head = document.querySelector('.map-card .map-head');
+    if (!head) return;
+    var old = head.querySelector('.map-switch');
+    if (old) old.remove();
+    var box = document.createElement('span');
+    box.className = 'map-switch';
+    box.innerHTML = '<button data-m="tile" class="' + (current === 'tile' ? 'on' : '') + '">瓦片图</button>' +
+      '<button data-m="mini" class="' + (current === 'mini' ? 'on' : '') + '">简图</button>';
+    head.appendChild(box);
+    [].forEach.call(box.children, function (b) {
+      b.onclick = function () {
+        if (b.dataset.m === 'mini') { mapMode = 'mini'; renderMiniRoute(route); }
+        else { mapMode = 'tile'; if (rmap) { try { rmap.remove(); } catch (e) {} rmap = null; } buildRouteMap(route); }
+      };
+    });
+  }
+
   function makeLayers() {
     var std = L.tileLayer(
       'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
@@ -698,10 +748,12 @@
   function initRouteMap(route) {
     var box = $('#routeMap');
     if (!box) return;
+    try {
+      var pref = new URLSearchParams(location.search).get('map');
+      if (pref === 'mini') { renderMiniRoute(route); return; }
+    } catch (e) {}
     if (typeof L === 'undefined') {
-      box.innerHTML = '<div class="map-fallback">地图组件未加载，已显示点位列表；' +
-        '可点下方「开始导航」用高德地图查看。</div>';
-      var tip0 = $('#mapTip'); if (tip0) tip0.textContent = '示意图模式';
+      renderMiniRoute(route);
       return;
     }
     if (rmap) { rmap.remove(); rmap = null; }
@@ -722,7 +774,20 @@
     rmap = L.map(box, { zoomControl: true, attributionControl: false }).setView([36.6, 109.5], 7);
 
     // 高德标准 / 卫星 / OSM 三选一，可切换
+    var loaded = 0;
+    rmap.eachLayer(function (ly) {
+      if (ly && ly.on) {
+        ly.on('tileload', function () { loaded++; });
+      }
+    });
     makeLayers().addTo(rmap, $('#mapTip'));
+    addMapSwitch(route, 'tile');
+    setTimeout(function () {
+      if (loaded === 0 && mapMode !== 'mini') {
+        appendLog && appendLog({ event: 'map_fallback', reason: 'no_tile_in_4s' });
+        renderMiniRoute(route);
+      }
+    }, 4000);
 
     var pts = [];
     (route || []).forEach(function (r, i) {
@@ -1227,11 +1292,14 @@
 
   /* ---------------- 绑定 ---------------- */
   function primeGeo() {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(function (p) {
-      geoState.pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+    var g = window.APP_GEO;
+    if (g && typeof g.lat === 'number') {
+      geoState.pos = { lat: g.lat, lng: g.lng };
+    }
+    document.addEventListener('geo:ready', function (e) {
+      geoState.pos = { lat: e.detail.lat, lng: e.detail.lng };
       if (smap && geoState.data) addMe(geoState.data);
-    }, function () {}, { timeout: 6000, maximumAge: 300000 });
+    });
   }
 
 
@@ -1274,8 +1342,9 @@
     var tiles = document.querySelectorAll('#routeMap .leaflet-tile').length;
     var pins = document.querySelectorAll('#routeMap .mp-pin').length;
     var labels = document.querySelectorAll('#routeMap .mp-label').length;
-    document.title = 'ROUTEMAP:' + (tiles > 0 && pins > 0 ? 'OK' : 'FAIL') +
-      ' tiles=' + tiles + ' pins=' + pins + ' labels=' + labels +
+    var nodes = document.querySelectorAll('#routeMap .mm-node').length;
+    document.title = 'ROUTEMAP:' + ((tiles > 0 && pins > 0) || nodes > 0 ? 'OK' : 'FAIL') +
+      ' tiles=' + tiles + ' pins=' + pins + ' mini=' + nodes + ' labels=' + labels +
       ' size=' + (box ? Math.round(box.getBoundingClientRect().width) + 'x' +
                    Math.round(box.getBoundingClientRect().height) : '0x0');
   };
