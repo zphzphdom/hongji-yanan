@@ -57,3 +57,70 @@
       window.APP.setBrand(meta);
     }).catch(function () {});
 })();
+
+
+/* 定位询问（由 region.js 统一初始化） */
+(function () {
+  if (window.__geoAskInit) return;
+  window.__geoAskInit = true;
+
+  var KEY = 'hy_geo_choice';
+  var POS = 'hy_geo_pos';
+
+  function loadPos() {
+    try {
+      var v = JSON.parse(localStorage.getItem(POS) || 'null');
+      if (v && typeof v.lat === 'number') return v;
+    } catch (e) {}
+    return null;
+  }
+
+  function savePos(p) {
+    try { localStorage.setItem(POS, JSON.stringify(p)); } catch (e) {}
+  }
+
+  function bar() {
+    var el = document.createElement('div');
+    el.className = 'geo-ask';
+    el.innerHTML = '<span class="ga-text">允许定位，线路会按你当前位置排序，导航可一键从这里出发。</span>' +
+      '<button class="ga-yes">允许</button><button class="ga-no">以后</button>';
+    document.body.appendChild(el);
+    el.querySelector('.ga-no').onclick = function () {
+      try { localStorage.setItem(KEY, 'no'); } catch (e) {}
+      el.classList.add('out');
+      setTimeout(function () { el.remove(); }, 300);
+    };
+    el.querySelector('.ga-yes').onclick = function () {
+      el.querySelector('.ga-text').textContent = '正在获取定位…';
+      request(true, function () { el.classList.add('out'); setTimeout(function () { el.remove(); }, 300); });
+    };
+    return el;
+  }
+
+  function request(force, done) {
+    if (!navigator.geolocation) { done && done(null); return; }
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var v = { lat: p.coords.latitude, lng: p.coords.longitude, t: Date.now() };
+      savePos(v);
+      try { localStorage.setItem(KEY, 'yes'); } catch (e) {}
+      window.APP_GEO = v;
+      document.dispatchEvent(new CustomEvent('geo:ready', { detail: v }));
+      done && done(v);
+    }, function () {
+      try { localStorage.setItem(KEY, 'no'); } catch (e) {}
+      done && done(null);
+    }, { timeout: 8000, maximumAge: 300000, enableHighAccuracy: false });
+  }
+
+  window.APP_GEO = loadPos();
+  window.askGeo = request;
+
+  // 已授权则静默刷新一次；未选择则弹出询问条
+  var choice = null;
+  try { choice = localStorage.getItem(KEY); } catch (e) {}
+  if (choice === 'yes') {
+    request(false, null);
+  } else if (choice !== 'no') {
+    setTimeout(function () { bar(); }, 800);
+  }
+})();
