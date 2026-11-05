@@ -106,7 +106,27 @@ def _why(site, interest, identity):
     return "，".join(bits) + "。" + tail
 
 
-def plan_route(identity, stage, interest, days=1, note="", region="yanan"):
+def _geo_of_county(county):
+    try:
+        import json as _j, os as _o
+        p = _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "data", "geo.json")
+        d = _j.load(open(p, encoding="utf-8"))
+        for k, v in (d.get("counties") or {}).items():
+            if k and (k in (county or "") or (county or "") in k):
+                return (v[0], v[1])
+    except Exception:
+        pass
+    return None
+
+
+def _dist_km(a, b):
+    import math
+    dlat = math.radians(b[0] - a[0]); dlon = math.radians(b[1] - a[1])
+    h = math.sin(dlat / 2) ** 2 + math.cos(math.radians(a[0])) * math.cos(math.radians(b[0])) * math.sin(dlon / 2) ** 2
+    return 2 * 6371 * math.asin(min(1, math.sqrt(h)))
+
+
+def plan_route(identity, stage, interest, days=1, note="", region="yanan", origin=None):
     """按天数排线：一天一个片区（县区），片区内按得分取点位，避免跨县折返。"""
     try:
         days = max(1, min(7, int(days)))
@@ -147,7 +167,16 @@ def plan_route(identity, stage, interest, days=1, note="", region="yanan"):
         lst = groups[c]
         return (max(_score(x, interest, identity) for x in lst), len(lst))
 
-    counties = sorted(groups, key=lambda c: (-county_strength(c)[0], -county_strength(c)[1]))
+    def county_distance(c):
+        if not origin or not origin.get("lat"):
+            return 0
+        geo = _geo_of_county(c)
+        if not geo:
+            return 0
+        return _dist_km((origin["lat"], origin["lng"]), geo)
+
+    counties = sorted(groups, key=lambda c: (-county_strength(c)[0], county_distance(c),
+                                             -county_strength(c)[1]))
     # 同强度的县区之间随机换序，避免每次都是同一个开始
     bands, cur_band, cur_key = [], [], None
     for c in counties:
