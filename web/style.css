@@ -673,3 +673,36 @@ body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--sans);
 .console-entry{display:inline-block;margin-left:10px;font-size:11px;color:#A6978E;text-decoration:none;
   border:1px solid var(--line);border-radius:10px;padding:2px 8px}
 .console-entry:hover{color:var(--red);border-color:var(--gold)}
+
+/* 自带矢量地图 */
+.mm-wrap{position:relative;background:#FBF7F1;border-radius:10px;overflow:hidden}
+.mm-svg{display:block;width:100%;height:auto;max-height:420px}
+.mm-node{cursor:pointer}
+.mm-node circle{transition:transform .15s ease}
+.mm-node:hover circle{stroke:#fff;stroke-width:3.5}
+.mm-node.on circle{fill:#B0863A}
+.mm-node text{pointer-events:none;font-family:var(--sans)}
+.mm-panel{border-top:1px solid #EFE2D6;background:#fff;padding:10px 12px;min-height:52px}
+.mm-hint{font-size:12px;color:#A6978E}
+.mm-title{font-weight:700;font-size:14px;color:#211A17;margin-bottom:3px}
+.mm-desc{font-size:12.5px;color:#5A4A40;line-height:1.6;margin-bottom:3px}
+.mm-addr{font-size:11px;color:#A6978E}
+.mm-acts{display:flex;gap:8px;margin-top:8px;max-width:320px}
+.mm-empty{padding:28px;text-align:center;color:#8A7A6E;font-size:12.5px}
+.map-switch{display:inline-flex;gap:6px;margin-left:auto}
+.map-switch button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:3px 10px;
+  font-size:11px;color:#6E625C;cursor:pointer;font-family:var(--sans)}
+.map-switch button.on{background:var(--red);color:#fff;border-color:var(--red)}
+
+
+/* 定位询问条 */
+.geo-ask{position:fixed;left:12px;right:12px;bottom:14px;z-index:180;max-width:520px;margin:0 auto;
+  display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(60,30,20,.18);
+  animation:riseIn .28s ease both;font-size:12.5px;color:#4A3A34}
+.geo-ask.out{opacity:0;transform:translateY(8px);transition:.3s}
+.ga-text{flex:1;line-height:1.6}
+.geo-ask button{border:none;border-radius:9px;padding:7px 14px;font-size:12.5px;
+  font-family:var(--sans);cursor:pointer}
+.ga-yes{background:var(--red);color:#fff}
+.ga-no{background:#F3ECE4;color:#6E625C}
