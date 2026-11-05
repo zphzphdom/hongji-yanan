@@ -58,7 +58,11 @@
 
   function draw() {
     if (typeof L === 'undefined') {
-      document.getElementById('goMap').innerHTML = '<div class="map-fallback">地图组件未加载</div>';
+      if (window.MiniMap) window.MiniMap(document.getElementById('goMap'), pts.map(function (x) {
+        return { lat: x.geo.lat, lng: x.geo.lng, name: x.name, addr: x.geo.addr,
+                 nav: (x.geo.amap || {}).navFrom || (x.geo.amap || {}).nav,
+                 search: (x.geo.amap || {}).search };
+      }), { height: 380 });
       return;
     }
     var pts = items.filter(function (x) { return x.geo; });
@@ -73,6 +77,8 @@
       { subdomains: '1234', maxZoom: 18 });
     var sat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
       { subdomains: '1234', maxZoom: 18 });
+    var got = 0;
+    std.on('tileload', function () { got++; });
     std.addTo(map);
     L.control.layers({ '标准': std, '卫星': sat }, null, { position: 'topright', collapsed: true }).addTo(map);
 
@@ -95,6 +101,16 @@
     var all = pts.map(function (x) { return [x.geo.lat, x.geo.lng]; });
     if (pos) all.push([pos.lat, pos.lng]);
     map.fitBounds(all, { padding: [30, 30] });
+    setTimeout(function () {
+      if (got === 0 && window.MiniMap) {
+        try { map.remove(); } catch (e) {}
+        window.MiniMap(document.getElementById('goMap'), pts.map(function (x) {
+          return { lat: x.geo.lat, lng: x.geo.lng, name: x.name, addr: x.geo.addr,
+                   nav: (x.geo.amap || {}).navFrom || (x.geo.amap || {}).nav,
+                   search: (x.geo.amap || {}).search };
+        }), { height: 380 });
+      }
+    }, 4200);
     [60, 200, 500, 900].forEach(function (ms) {
       setTimeout(function () { try { map.invalidateSize(); } catch (e) {} }, ms);
     });
